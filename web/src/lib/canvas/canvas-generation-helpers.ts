@@ -120,7 +120,8 @@ export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
     return nodes.map((node) => {
         if (node.metadata?.status !== "loading") return node;
         if (node.type === CanvasNodeType.Video && node.metadata.remoteVideoTask) {
-            return { ...node, metadata: { ...node.metadata, status: "recoverable" as const, errorDetails: "页面刷新已停止自动查询，可继续查询原视频任务。" } };
+            const autoResume = node.metadata.remoteVideoTask.autoResume !== false;
+            return { ...node, metadata: { ...node.metadata, status: autoResume ? ("loading" as const) : ("recoverable" as const), errorDetails: autoResume ? undefined : "已停止自动查询，可继续查询原视频任务。" } };
         }
         return { ...node, metadata: { ...node.metadata, status: "error" as const, errorDetails: "页面刷新后生成已中断，请重新生成。" } };
     });

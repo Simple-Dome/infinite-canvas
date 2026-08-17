@@ -81,8 +81,6 @@ export function validateJimeng933VideoInput(input: Jimeng933VideoValidationInput
     if (!JIMENG933_RESOLUTION_OPTIONS.includes(input.resolution as (typeof JIMENG933_RESOLUTION_OPTIONS)[number])) return "933 即梦分辨率只支持 480p、720p、1080p";
     if (input.model === "firefly-video-v2-fast" && input.resolution === "1080p") return "firefly-video-v2-fast 不支持 1080p，请选择 480p 或 720p";
     if (!JIMENG933_RATIO_OPTIONS.includes(input.aspectRatio as (typeof JIMENG933_RATIO_OPTIONS)[number])) return "933 即梦画面比例只支持 21:9、16:9、4:3、1:1、3:4、9:16";
-    if (textLength(input.prompt) > 1500) return "933 即梦提示词不能超过 1500 个字符";
-    if (textLength(input.negativePrompt || "") > 1500) return "933 即梦负面提示词不能超过 1500 个字符";
     if (input.seed !== undefined && (!Number.isInteger(input.seed) || input.seed < 0 || input.seed > 2_147_483_647)) return "933 即梦 Seed 必须是 0–2147483647 的整数";
 
     if (input.shots !== undefined) {
@@ -91,7 +89,6 @@ export function validateJimeng933VideoInput(input: Jimeng933VideoValidationInput
         for (let index = 0; index < input.shots.length; index += 1) {
             const shot = input.shots[index];
             if (!shot.prompt.trim()) return `分镜 ${index + 1} 的提示词不能为空`;
-            if (textLength(shot.prompt) > 1500) return `分镜 ${index + 1} 的提示词不能超过 1500 个字符`;
             if (!Number.isInteger(shot.duration) || shot.duration <= 0) return `分镜 ${index + 1} 的时长必须是正整数`;
             totalDuration += shot.duration;
         }
@@ -157,8 +154,4 @@ export function validateJimeng933VideoInput(input: Jimeng933VideoValidationInput
 
 function normalizeMimeType(value: string) {
     return value.trim().toLowerCase().split(";", 1)[0];
-}
-
-function textLength(value: string) {
-    return Array.from(value).length;
 }

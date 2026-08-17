@@ -310,7 +310,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                             <InfoRow label="状态" value={node.metadata?.status || "idle"} />
                             {node.metadata?.remoteVideoTask ? <InfoRow label="任务 ID" value={node.metadata.remoteVideoTask.id} /> : null}
                             {node.metadata?.remoteVideoTask ? <InfoRow label="远端状态" value={node.metadata.remoteVideoTask.remoteStatus} /> : null}
-                            {typeof node.metadata?.remoteVideoTask?.progress === "number" ? <InfoRow label="生成进度" value={`${Math.round(node.metadata.remoteVideoTask.progress)}%`} /> : null}
+                            {typeof node.metadata?.remoteVideoTask?.remoteProgress === "number" ? <InfoRow label="生成进度" value={`${Math.round(node.metadata.remoteVideoTask.remoteProgress)}%`} /> : null}
                             {batchCount > 1 ? <InfoRow label="图片组" value={`${batchCount} 张`} /> : null}
                             {node.metadata?.prompt ? <InfoRow label="提示词" value={node.metadata.prompt} /> : null}
                             {imageBytes ? <InfoRow label="图片大小" value={formatBytes(imageBytes)} /> : null}

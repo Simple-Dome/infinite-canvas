@@ -6,7 +6,7 @@ import { saveAs } from "file-saver";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
-import { downloadVideoGenerationTask, pollVideoGenerationTask, readVideoSeed, requestVideoGeneration, storeGeneratedVideo, VideoTaskPausedError, type VideoGenerationResult, type VideoGenerationTask, type VideoGenerationTaskState } from "@/services/api/video";
+import { continueVideoGenerationTask, downloadVideoGenerationTask, pollVideoGenerationTask, readVideoSeed, requestVideoGeneration, storeGeneratedVideo, VideoTaskPausedError, type VideoGenerationResult, type VideoGenerationTask, type VideoGenerationTaskState } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadImage } from "@/services/image-storage";
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
@@ -355,7 +355,7 @@ function InfiniteCanvasPage() {
             prev.map((node) =>
                 affectedNodeIds.has(node.id) && node.metadata?.status === NODE_STATUS_LOADING
                     ? node.type === CanvasNodeType.Video && node.metadata.remoteVideoTask
-                        ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_RECOVERABLE, errorDetails: "已停止自动查询，可继续查询原视频任务。" } }
+                        ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_RECOVERABLE, errorDetails: "已停止自动查询，可继续查询原视频任务。", remoteVideoTask: { ...node.metadata.remoteVideoTask, autoResume: false } } }
                         : { ...node, metadata: { ...node.metadata, status: NODE_STATUS_IDLE, errorDetails: undefined } }
                     : node,
             ),
@@ -1724,6 +1724,24 @@ function InfiniteCanvasPage() {
         }
     }, []);
 
+    const applyDownloadedRemoteVideo = useCallback((nodeId: string, fallbackNode: CanvasNodeData, video: UploadedFile, state: VideoGenerationTaskState) => {
+        const current = nodesRef.current.find((item) => item.id === nodeId) || fallbackNode;
+        const videoSize = fitNodeSize(video.width || current.width, video.height || current.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+        setNodes((prev) =>
+            prev.map((item) =>
+                item.id === nodeId
+                    ? {
+                          ...item,
+                          width: videoSize.width,
+                          height: videoSize.height,
+                          position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 },
+                          metadata: { ...item.metadata, ...videoMetadata(video), errorDetails: undefined, remoteVideoTask: mergeCanvasRemoteVideoTask(item.metadata?.remoteVideoTask, state) },
+                      }
+                    : item,
+            ),
+        );
+    }, []);
+
     const queryRemoteVideoTask = useCallback(
         async (node: CanvasNodeData) => {
             const remoteTask = node.metadata?.remoteVideoTask;
@@ -1752,8 +1770,8 @@ function InfiniteCanvasPage() {
     const downloadRemoteVideo = useCallback(
         async (node: CanvasNodeData) => {
             const remoteTask = node.metadata?.remoteVideoTask;
-            if (!remoteTask) return message.error("当前视频节点没有可下载的任务 ID");
-            if (generationRequestsRef.current.has(node.id)) return message.info("视频正在自动下载，请稍候");
+            if (!remoteTask) return message.error("当前视频节点没有可查询的任务 ID");
+            if (generationRequestsRef.current.has(node.id)) return message.info("视频正在自动查询或下载，请稍候");
             if (!isAiConfigReady(effectiveConfig, remoteTask.model)) {
                 openConfigDialog(true);
                 return;
@@ -1762,28 +1780,14 @@ function InfiniteCanvasPage() {
                 try {
                     const task = toVideoGenerationTask(remoteTask);
                     const state = await pollVideoGenerationTask(effectiveConfig, task);
+                    setNodes((prev) => prev.map((item) => (item.id === node.id ? applyRemoteVideoTaskState(item, state) : item)));
                     if (state.status !== "completed") {
-                        setNodes((prev) => prev.map((item) => (item.id === node.id ? applyRemoteVideoTaskState(item, state) : item)));
                         if (state.status === "failed") message.error(state.error);
-                        else message.info("视频尚未完成，请稍后再试");
+                        else message.info(typeof state.progress === "number" ? `远端状态：${state.remoteStatus}，进度 ${Math.round(state.progress)}%` : `远端状态：${state.remoteStatus}`);
                         return;
                     }
                     const video = await storeGeneratedVideo(await downloadVideoGenerationTask(effectiveConfig, task, state));
-                    const current = nodesRef.current.find((item) => item.id === node.id) || node;
-                    const videoSize = fitNodeSize(video.width || current.width, video.height || current.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) =>
-                        prev.map((item) =>
-                            item.id === node.id
-                                ? {
-                                      ...item,
-                                      width: videoSize.width,
-                                      height: videoSize.height,
-                                      position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 },
-                                      metadata: { ...item.metadata, ...videoMetadata(video), errorDetails: undefined, remoteVideoTask: mergeCanvasRemoteVideoTask(item.metadata?.remoteVideoTask, state) },
-                                  }
-                                : item,
-                        ),
-                    );
+                    applyDownloadedRemoteVideo(node.id, node, video, state);
                     message.success("视频已下载到画布");
                 } catch (error) {
                     const errorDetails = error instanceof Error ? error.message : "视频下载失败";
@@ -1792,8 +1796,50 @@ function InfiniteCanvasPage() {
                 }
             });
         },
-        [effectiveConfig, isAiConfigReady, message, openConfigDialog, runRemoteVideoAction],
+        [applyDownloadedRemoteVideo, effectiveConfig, isAiConfigReady, message, openConfigDialog, runRemoteVideoAction],
     );
+
+    const resumeRemoteVideoTask = useCallback(
+        async (node: CanvasNodeData) => {
+            const remoteTask = node.metadata?.remoteVideoTask;
+            if (!remoteTask || node.metadata?.content || remoteTask.remoteStatus === "failed" || (remoteTask.autoResume === false && !isCompletedRemoteVideoStatus(remoteTask.remoteStatus)) || generationRequestsRef.current.has(node.id)) return;
+            if (!isAiConfigReady(effectiveConfig, remoteTask.model)) {
+                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_RECOVERABLE, errorDetails: "原视频任务对应渠道缺少 Base URL 或 API Key" } } : item)));
+                return;
+            }
+
+            const controller = startGenerationRequest(node.id, node.id, node.id);
+            setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined } } : item)));
+            let completedState: VideoGenerationTaskState | undefined;
+            try {
+                const result = await continueVideoGenerationTask(effectiveConfig, toVideoGenerationTask(remoteTask), {
+                    signal: controller.signal,
+                    onTaskStateChange: (state) => {
+                        if (state.status === "completed") completedState = state;
+                        setNodes((prev) => prev.map((item) => (item.id === node.id ? updateObservedRemoteVideoTask(item, state) : item)));
+                    },
+                });
+                if (!completedState) throw new Error("视频任务已返回结果，但缺少完成状态");
+                const video = await storeGeneratedVideo(result);
+                applyDownloadedRemoteVideo(node.id, node, video, completedState);
+                message.success("视频已完成并下载到画布");
+            } catch (error) {
+                if (isGenerationCanceled(error)) return;
+                const errorDetails = error instanceof VideoTaskPausedError ? videoTaskPausedMessage(error) : error instanceof Error ? error.message : "恢复视频任务失败";
+                setNodes((prev) => prev.map((item) => (item.id === node.id && !item.metadata?.content ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_RECOVERABLE, errorDetails } } : item)));
+            } finally {
+                finishGenerationRequest(node.id, controller);
+            }
+        },
+        [applyDownloadedRemoteVideo, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, startGenerationRequest],
+    );
+
+    useEffect(() => {
+        if (!projectLoaded) return;
+        nodesRef.current.forEach((node) => {
+            if (node.type === CanvasNodeType.Video && node.metadata?.remoteVideoTask && !node.metadata.content) void resumeRemoteVideoTask(node);
+        });
+    }, [projectId, projectLoaded, resumeRemoteVideoTask]);
 
     const saveNodeAsset = useCallback(
         async (node: CanvasNodeData) => {
@@ -3468,18 +3514,18 @@ function validateCanvasVideoStructure(context: NodeGenerationContext, isJimeng93
 }
 
 function createCanvasRemoteVideoTask(task: VideoGenerationTask): CanvasRemoteVideoTask {
-    return { ...task, remoteStatus: "queued", createdAt: Date.now() };
+    return { ...task, remoteStatus: "queued", autoResume: true, createdAt: Date.now() };
 }
 
 function mergeCanvasRemoteVideoTask(task: CanvasRemoteVideoTask | undefined, state: VideoGenerationTaskState) {
     if (!task) return undefined;
-    const completed = state.status === "completed" || isCompletedRemoteVideoStatus(task.remoteStatus);
-    const stateProgress = state.progress;
-    const progress = completed ? 100 : typeof stateProgress === "number" && typeof task.progress === "number" ? Math.max(task.progress, stateProgress) : stateProgress ?? task.progress;
+    const displayProgress = state.status === "completed" ? 100 : typeof state.progress === "number" ? Math.max(task.displayProgress ?? 0, state.progress) : task.displayProgress;
     return {
         ...task,
-        remoteStatus: isCompletedRemoteVideoStatus(task.remoteStatus) && state.status === "pending" ? task.remoteStatus : state.remoteStatus,
-        progress,
+        remoteStatus: state.remoteStatus,
+        remoteProgress: state.progress,
+        displayProgress,
+        autoResume: state.status === "pending" && task.autoResume !== false,
         lastCheckedAt: Date.now(),
     };
 }
@@ -3488,7 +3534,7 @@ function updateObservedRemoteVideoTask(node: CanvasNodeData, state: VideoGenerat
     const current = node.metadata?.remoteVideoTask;
     if (!current) return node;
     const remoteVideoTask = mergeCanvasRemoteVideoTask(current, state);
-    if (current.remoteStatus === remoteVideoTask?.remoteStatus && current.progress === remoteVideoTask?.progress) return node;
+    if (current.remoteStatus === remoteVideoTask?.remoteStatus && current.remoteProgress === remoteVideoTask?.remoteProgress && current.displayProgress === remoteVideoTask?.displayProgress && current.autoResume === remoteVideoTask?.autoResume) return node;
     return { ...node, metadata: { ...node.metadata, remoteVideoTask } };
 }
 

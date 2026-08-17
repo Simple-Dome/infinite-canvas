@@ -481,13 +481,13 @@ function VideoTaskProgressContent({ node, theme, onQueryRemoteVideo, onDownloadR
     const task = node.metadata!.remoteVideoTask!;
     const completed = ["completed", "succeeded", "done"].includes(task.remoteStatus);
     const paused = node.metadata?.status === "recoverable";
-    const progress = completed ? 100 : task.progress;
-    const progressLabel = typeof progress === "number" ? `${Math.round(progress)}%` : "";
+    const barProgress = completed ? 100 : task.displayProgress;
+    const progressLabel = typeof task.remoteProgress === "number" ? `${Math.round(task.remoteProgress)}%` : "";
     return (
         <div className="flex h-full w-full max-w-[320px] flex-col items-center justify-center gap-3 px-5 text-center" style={{ color: theme.node.text }}>
             <div className="text-sm font-medium">{completed ? "视频已完成" : paused ? "自动查询已暂停" : "视频生成中"}</div>
             <div className="w-full max-w-56 overflow-hidden rounded-full" style={{ height: 4, background: theme.node.stroke }}>
-                <div className={`h-full rounded-full transition-[width] duration-300 ${typeof progress === "number" ? "" : "animate-pulse opacity-40"}`} style={{ width: typeof progress === "number" ? `${progress}%` : "100%", background: theme.node.activeStroke }} />
+                <div className={`h-full rounded-full transition-[width] duration-300 ${typeof barProgress === "number" ? "" : "animate-pulse opacity-40"}`} style={{ width: typeof barProgress === "number" ? `${barProgress}%` : "100%", background: theme.node.activeStroke }} />
             </div>
             <div className="text-xs opacity-60">
                 状态：{task.remoteStatus}
@@ -510,22 +510,20 @@ function VideoTaskProgressContent({ node, theme, onQueryRemoteVideo, onDownloadR
                     <RefreshCw className={`size-3.5 ${isRemoteVideoActionRunning ? "animate-spin" : ""}`} />
                     立即查询
                 </button>
-                {completed ? (
-                    <button
-                        type="button"
-                        className="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-50"
-                        style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
-                        disabled={isRemoteVideoActionRunning || isRemoteVideoDownloadBlocked}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onDownloadRemoteVideo?.(node);
-                        }}
-                        onMouseDown={(event) => event.stopPropagation()}
-                    >
-                        <Download className="size-3.5" />
-                        下载视频
-                    </button>
-                ) : null}
+                <button
+                    type="button"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-50"
+                    style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+                    disabled={isRemoteVideoActionRunning || isRemoteVideoDownloadBlocked}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onDownloadRemoteVideo?.(node);
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                >
+                    <Download className="size-3.5" />
+                    {isRemoteVideoActionRunning ? "查询中" : completed ? "下载视频" : "查询并下载"}
+                </button>
             </div>
         </div>
     );

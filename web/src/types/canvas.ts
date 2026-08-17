@@ -42,7 +42,9 @@ export type CanvasRemoteVideoTask = {
     provider: "openai" | "seedance" | "jimeng933" | "jimeng431" | "plugin";
     model: string;
     remoteStatus: string;
-    progress?: number;
+    remoteProgress?: number;
+    displayProgress?: number;
+    autoResume: boolean;
     createdAt: number;
     lastCheckedAt?: number;
 };

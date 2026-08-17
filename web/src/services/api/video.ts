@@ -8,7 +8,7 @@ import { isJimeng431VideoConfig, normalizeJimeng431Ratio, normalizeJimeng431Reso
 import { isJimeng933VideoConfig, normalizeJimeng933Ratio, normalizeJimeng933Resolution, validateJimeng933VideoInput, type VideoImageRole, type VideoShot } from "@/lib/jimeng933-video";
 import { boolConfig, buildSeedancePromptText, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceVideoReferenceError } from "@/lib/seedance-video";
 import { optimizeVideoReferenceImageDataUrl } from "@/lib/video-reference-preprocess";
-import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@/stores/use-config-store";
+import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, resolveTaskModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -122,6 +122,10 @@ function aiHeaders(config: AiConfig, contentType?: string) {
 export async function requestVideoGeneration(config: AiConfig, input: VideoGenerationInput, options?: VideoRequestOptions): Promise<VideoGenerationResult> {
     const task = await createVideoGenerationTask(config, input, options);
     options?.onTaskCreated?.(task);
+    return continueVideoGenerationTask(config, task, options);
+}
+
+export async function continueVideoGenerationTask(config: AiConfig, task: VideoGenerationTask, options?: VideoRequestOptions): Promise<VideoGenerationResult> {
     const pollingPolicy = getVideoPollingPolicy(task);
     for (let attempt = 0; attempt < pollingPolicy.maxAttempts; attempt += 1) {
         if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -180,7 +184,7 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
             ? { status: "completed", remoteStatus: "completed", progress: 100, result }
             : { status: "failed", remoteStatus: "expired", error: "插件视频任务已失效，请重新生成" };
     }
-    const requestConfig = resolveModelRequestConfig(config, task.model);
+    const requestConfig = resolveTaskModelRequestConfig(config, task.model);
     assertVideoConfig(requestConfig, requestConfig.model);
     if (task.provider === "jimeng933") return pollJimeng933VideoTask(requestConfig, task, options);
     if (task.provider === "jimeng431") return pollJimeng431VideoTask(requestConfig, task, options);
@@ -233,12 +237,12 @@ export async function downloadVideoGenerationTask(config: AiConfig, task: VideoG
         if (!result) throw new Error("插件视频任务已失效，请重新生成");
         return result;
     }
-    const requestConfig = resolveModelRequestConfig(config, task.model);
+    const requestConfig = resolveTaskModelRequestConfig(config, task.model);
     assertVideoConfig(requestConfig, requestConfig.model);
     const completedState = state?.status === "completed" ? state : task.provider === "jimeng933" ? await pollJimeng933VideoTask(requestConfig, task, options) : task.provider === "jimeng431" ? await pollJimeng431VideoTask(requestConfig, task, options) : task.provider === "seedance" ? await pollSeedanceTask(requestConfig, task, options) : await pollOpenAIVideoTask(requestConfig, task, options);
     if (completedState.status !== "completed") throw new Error(completedState.status === "failed" ? completedState.error : "视频任务尚未完成");
     if (completedState.result) return completedState.result;
-    if (task.provider === "jimeng933") return downloadJimeng933VideoTask(requestConfig, task, completedState.resultUrl, options);
+    if (task.provider === "jimeng933") return downloadJimeng933VideoTask(requestConfig, task, options);
     if (task.provider === "jimeng431") return downloadJimeng431VideoTask(requestConfig, task, completedState.resultUrl, options);
     if (completedState.resultUrl) return videoResultFromUrl(completedState.resultUrl, options);
     if (task.provider === "seedance") throw new Error("Seedance 任务成功但没有返回视频 URL");
@@ -318,7 +322,7 @@ async function pollJimeng933VideoTask(config: AiConfig, task: VideoGenerationTas
         const state = (await axios.get<JimengTaskResponse>(aiApiUrl(config, `/videos/${encodeURIComponent(task.id)}`), { headers: aiHeaders(config), signal: options?.signal })).data;
         const remoteStatus = normalizeRemoteStatus(state.status);
         const progress = normalizeProgress(state.progress);
-        if (remoteStatus === "completed") return { status: "completed", remoteStatus, progress: 100, ...(state.download_url ? { resultUrl: state.download_url } : {}) };
+        if (remoteStatus === "completed") return { status: "completed", remoteStatus, progress, ...(state.download_url ? { resultUrl: state.download_url } : {}) };
         if (remoteStatus === "failed") return { status: "failed", remoteStatus, progress, error: readApiErrorMessage(state.error?.message) || readApiErrorMessage(state.message) || "933 即梦视频生成失败" };
         return { status: "pending", remoteStatus, progress };
     } catch (error) {
@@ -326,19 +330,15 @@ async function pollJimeng933VideoTask(config: AiConfig, task: VideoGenerationTas
     }
 }
 
-async function downloadJimeng933VideoTask(config: AiConfig, task: VideoGenerationTask, downloadUrl?: string, options?: Pick<VideoRequestOptions, "signal">): Promise<VideoGenerationResult> {
+async function downloadJimeng933VideoTask(config: AiConfig, task: VideoGenerationTask, options?: Pick<VideoRequestOptions, "signal">): Promise<VideoGenerationResult> {
     try {
-        const url = jimeng933DownloadUrl(config, task.id, downloadUrl);
+        const url = aiApiUrl(config, `/videos/${encodeURIComponent(task.id)}/content`);
         const response = await axios.get<Blob>(url, { headers: aiHeaders(config), responseType: "blob", signal: options?.signal });
         await assertVideoBlob(response.data);
         return { blob: response.data };
     } catch (error) {
         throw new Error(await readJimeng933AxiosError(error, "933 即梦视频下载失败"));
     }
-}
-
-function jimeng933DownloadUrl(config: AiConfig, taskId: string, downloadUrl?: string) {
-    return jimengDownloadUrl(config, taskId, downloadUrl, "933");
 }
 
 function jimengDownloadUrl(config: AiConfig, taskId: string, downloadUrl: string | undefined, provider: "431" | "933") {
@@ -413,7 +413,7 @@ async function pollJimeng431VideoTask(config: AiConfig, task: VideoGenerationTas
         const state = (await axios.get<JimengTaskResponse>(aiApiUrl(config, `/videos/${encodeURIComponent(task.id)}`), { headers: aiHeaders(config), signal: options?.signal })).data;
         const remoteStatus = normalizeRemoteStatus(state.status);
         const progress = normalizeProgress(state.progress);
-        if (remoteStatus === "completed") return { status: "completed", remoteStatus, progress: 100, ...(state.download_url ? { resultUrl: state.download_url } : {}) };
+        if (remoteStatus === "completed") return { status: "completed", remoteStatus, progress, ...(state.download_url ? { resultUrl: state.download_url } : {}) };
         if (remoteStatus === "failed") return { status: "failed", remoteStatus, progress, error: readApiErrorMessage(state.error?.message) || readApiErrorMessage(state.message) || "431 即梦视频生成失败" };
         return { status: "pending", remoteStatus, progress };
     } catch (error) {

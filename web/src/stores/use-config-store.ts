@@ -360,6 +360,17 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
     };
 }
 
+export function resolveTaskModelRequestConfig(config: AiConfig, value: string) {
+    const decoded = decodeChannelModel(value);
+    if (!decoded) return resolveModelRequestConfig(config, value);
+    const channel = config.channels.find((item) => item.id === decoded.channelId);
+    if (!channel) throw new Error("原视频任务使用的渠道已不存在，请恢复该渠道配置后重试");
+    if (!channel.models.some((item) => item.name === decoded.model)) throw new Error("原视频任务使用的模型已从对应渠道中删除");
+    if (!channel.baseUrl.trim()) throw new Error("原视频任务对应渠道缺少 Base URL");
+    if (!channel.apiKey.trim()) throw new Error("原视频任务对应渠道缺少 API Key");
+    return { ...config, model: decoded.model, baseUrl: channel.baseUrl, apiKey: channel.apiKey, apiFormat: channel.apiFormat };
+}
+
 function normalizeChannels(config: AiConfig) {
     const persistedChannels = Array.isArray(config.channels) ? config.channels : [];
     const channels = persistedChannels.map((channel, index) =>
