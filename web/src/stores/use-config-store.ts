@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
+import { FIXED_API_BASE_URL } from "@/constant/env";
+
 export type ApiCallFormat = "openai" | "gemini" | "ark" | "jimeng933" | "jimeng431";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
@@ -65,11 +67,11 @@ export type ConfigTabKey = "channels" | "preferences" | "prompt-sources" | "webd
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
-const OPENAI_BASE_URL = "https://api.openai.com";
+const OPENAI_BASE_URL = FIXED_API_BASE_URL || "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 const ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
-const JIMENG933_BASE_URL = "https://gptch.cloud";
-const JIMENG431_BASE_URL = "https://gptch.cloud";
+const JIMENG933_BASE_URL = FIXED_API_BASE_URL || "https://gptch.cloud";
+const JIMENG431_BASE_URL = FIXED_API_BASE_URL || "https://gptch.cloud";
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
@@ -201,12 +203,15 @@ export const useConfigStore = create<ConfigStore>()(
             configTab: "channels",
             shouldPromptContinue: false,
             updateConfig: (key, value) =>
-                set((state) => ({
-                    config: {
-                        ...state.config,
-                        [key]: value,
-                    },
-                })),
+                set((state) => {
+                    const config = { ...state.config, [key]: value } as AiConfig;
+                    if (key === "baseUrl") config.baseUrl = fixedApiBaseUrl(config.baseUrl);
+                    if (key === "channels") {
+                        config.channels = normalizeChannels(config);
+                        config.baseUrl = fixedApiBaseUrl(config.baseUrl);
+                    }
+                    return { config };
+                }),
             updateWebdavConfig: (key, value) =>
                 set((state) => ({
                     webdav: {
@@ -232,37 +237,10 @@ export const useConfigStore = create<ConfigStore>()(
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;
-                const config = { ...defaultConfig, ...persistedConfig };
-                if (!Array.isArray(persistedConfig.channels)) config.channels = [];
-                const channels = normalizeChannels(config);
-                const models = modelOptionsFromChannels(channels);
                 return {
                     ...current,
                     webdav: { ...defaultWebdavSyncConfig, ...persistedWebdav },
-                    config: {
-                        ...config,
-                        channelMode: "local",
-                        apiFormat: normalizeApiFormat(config.apiFormat),
-                        channels,
-                        models,
-                        imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
-                        videoModel: normalizeModelOptionValue(config.videoModel, channels),
-                        textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
-                        audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
-                        audioVoice: config.audioVoice || defaultConfig.audioVoice,
-                        audioFormat: config.audioFormat || defaultConfig.audioFormat,
-                        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
-                        audioInstructions: config.audioInstructions || "",
-                        reasoningEffort: config.reasoningEffort || "auto",
-                        videoSeconds: config.videoSeconds || "5",
-                        videoSize: config.videoSize || "1280x720",
-                        vquality: config.vquality || "720",
-                        videoGenerateAudio: config.videoGenerateAudio || "true",
-                        videoSeedEnabled: config.videoSeedEnabled || "false",
-                        videoSeed: config.videoSeed || "0",
-                        videoWatermark: config.videoWatermark || "false",
-                        canvasImageCount: config.canvasImageCount || "3",
-                    },
+                    config: normalizeAiConfig(persistedConfig),
                 };
             },
         },
@@ -294,7 +272,7 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
     return {
         id: channel?.id?.trim() || nanoid(),
         name: channel?.name?.trim() || "新渠道",
-        baseUrl: channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat),
+        baseUrl: fixedApiBaseUrl(channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat)),
         apiKey: channel?.apiKey || "",
         apiFormat,
         models: normalizeChannelModels(channel?.models),
@@ -354,7 +332,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
     return {
         ...config,
         model: modelOptionName(value || config.model),
-        baseUrl: channel.baseUrl,
+        baseUrl: fixedApiBaseUrl(channel.baseUrl),
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,
     };
@@ -368,7 +346,7 @@ export function resolveTaskModelRequestConfig(config: AiConfig, value: string) {
     if (!channel.models.some((item) => item.name === decoded.model)) throw new Error("原视频任务使用的模型已从对应渠道中删除");
     if (!channel.baseUrl.trim()) throw new Error("原视频任务对应渠道缺少 Base URL");
     if (!channel.apiKey.trim()) throw new Error("原视频任务对应渠道缺少 API Key");
-    return { ...config, model: decoded.model, baseUrl: channel.baseUrl, apiKey: channel.apiKey, apiFormat: channel.apiFormat };
+    return { ...config, model: decoded.model, baseUrl: fixedApiBaseUrl(channel.baseUrl), apiKey: channel.apiKey, apiFormat: channel.apiFormat };
 }
 
 function normalizeChannels(config: AiConfig) {
@@ -386,22 +364,58 @@ function normalizeChannels(config: AiConfig) {
             createModelChannel({
                 id: "default",
                 name: "默认渠道",
-                baseUrl: config.baseUrl || defaultConfig.baseUrl,
+                baseUrl: fixedApiBaseUrl(config.baseUrl || defaultConfig.baseUrl),
                 apiKey: config.apiKey || "",
                 apiFormat: config.apiFormat || defaultConfig.apiFormat,
                 models: normalizeChannelModels([config.model, config.imageModel, config.videoModel, config.textModel, config.audioModel].map(modelOptionName)),
             }),
         );
     }
-    return channels;
+    return channels.map((channel) => ({ ...channel, baseUrl: fixedApiBaseUrl(channel.baseUrl) }));
+}
+
+export function normalizeAiConfig(input: Partial<AiConfig>): AiConfig {
+    const config = { ...defaultConfig, ...input };
+    if (!Array.isArray(input.channels)) config.channels = [];
+    const channels = normalizeChannels(config);
+    return {
+        ...config,
+        channelMode: "local",
+        apiFormat: normalizeApiFormat(config.apiFormat),
+        channels,
+        baseUrl: fixedApiBaseUrl(config.baseUrl || defaultConfig.baseUrl),
+        models: modelOptionsFromChannels(channels),
+        imageModel: normalizeModelOptionValue(config.imageModel || config.model, channels),
+        videoModel: normalizeModelOptionValue(config.videoModel, channels),
+        textModel: normalizeModelOptionValue(config.textModel || config.model, channels),
+        audioModel: normalizeModelOptionValue(config.audioModel || defaultConfig.audioModel, channels),
+        audioVoice: config.audioVoice || defaultConfig.audioVoice,
+        audioFormat: config.audioFormat || defaultConfig.audioFormat,
+        audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
+        audioInstructions: config.audioInstructions || "",
+        reasoningEffort: config.reasoningEffort || "auto",
+        videoSeconds: config.videoSeconds || "5",
+        videoSize: config.videoSize || "1280x720",
+        vquality: config.vquality || "720",
+        videoGenerateAudio: config.videoGenerateAudio || "true",
+        videoSeedEnabled: config.videoSeedEnabled || "false",
+        videoSeed: config.videoSeed || "0",
+        videoWatermark: config.videoWatermark || "false",
+        canvasImageCount: config.canvasImageCount || "3",
+    };
 }
 
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
+    if (FIXED_API_BASE_URL) return FIXED_API_BASE_URL;
     if (apiFormat === "gemini") return GEMINI_BASE_URL;
     if (apiFormat === "ark") return ARK_BASE_URL;
     if (apiFormat === "jimeng933") return JIMENG933_BASE_URL;
     if (apiFormat === "jimeng431") return JIMENG431_BASE_URL;
     return OPENAI_BASE_URL;
+}
+
+export function fixedApiBaseUrl(baseUrl: string) {
+    return FIXED_API_BASE_URL || baseUrl.trim();
 }
 
 function normalizeApiFormat(apiFormat: unknown): ApiCallFormat {
