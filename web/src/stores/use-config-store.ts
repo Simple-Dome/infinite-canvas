@@ -70,8 +70,8 @@ const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = FIXED_API_BASE_URL || "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 const ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
-const JIMENG933_BASE_URL = FIXED_API_BASE_URL || "https://gptch.cloud";
-const JIMENG431_BASE_URL = FIXED_API_BASE_URL || "https://gptch.cloud";
+const JIMENG933_BASE_URL = OPENAI_BASE_URL;
+const JIMENG431_BASE_URL = OPENAI_BASE_URL;
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
