@@ -58,6 +58,10 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
         imageCount: referenceImages.length,
         videoCount: referenceVideos.length,
         audioCount: referenceAudios.length,
+        imageRoles: {},
+        imageRoleTitles: {},
+        storyboardCount: 0,
+        storyboardDuration: 0,
     }, nodeId, nodes, connections);
 }
 

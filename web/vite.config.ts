@@ -7,6 +7,13 @@ import { defineConfig, type Plugin } from "vite";
 const webDir = dirname(fileURLToPath(import.meta.url));
 const localVersion = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() || "dev";
 
+function normalizeBase(value: string | undefined) {
+    const path = (value || "/").replace(/^\/+|\/+$/g, "");
+    return path ? `/${path}/` : "/";
+}
+
+const appBase = normalizeBase(process.env.VITE_BASE);
+
 // 暴露 /plugins/index.json:列出 public/plugins 下的本地插件文件,
 // 供前端自动发现并加入插件列表(默认关闭)。dev 下实时读目录,构建时产出静态清单。
 function localPluginsManifest(): Plugin {
@@ -16,7 +23,7 @@ function localPluginsManifest(): Plugin {
             return readdirSync(pluginsDir)
                 .filter((file) => file.endsWith(".js"))
                 .sort()
-                .map((file) => `/plugins/${file}`);
+                .map((file) => `${appBase}plugins/${file}`);
         } catch {
             return [];
         }
@@ -36,7 +43,7 @@ function localPluginsManifest(): Plugin {
 }
 
 export default defineConfig({
-    base: process.env.VITE_BASE || "/",
+    base: appBase,
     plugins: [react(), localPluginsManifest()],
     resolve: {
         alias: {

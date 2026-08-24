@@ -2,6 +2,7 @@ import { Button, Drawer, Input, Segmented, Select, Space } from "antd";
 import { ListPlus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { FIXED_API_BASE_URL } from "@/constant/env";
 import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 import { ModelScriptEditor } from "./model-script-editor";
 import { ModelSelectModal } from "./model-select-modal";
@@ -38,7 +39,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     const setModels = (models: ChannelModel[]) => patch({ models });
 
     const changeApiFormat = (apiFormat: ApiCallFormat) => {
-        const baseUrl = !draft.baseUrl.trim() || draft.baseUrl.trim() === defaultBaseUrlForApiFormat(draft.apiFormat) ? defaultBaseUrlForApiFormat(apiFormat) : draft.baseUrl;
+        const baseUrl = FIXED_API_BASE_URL || (!draft.baseUrl.trim() || draft.baseUrl.trim() === defaultBaseUrlForApiFormat(draft.apiFormat) ? defaultBaseUrlForApiFormat(apiFormat) : draft.baseUrl);
         const models = apiFormat === "jimeng431" ? draft.models.filter((model) => model.name === "leonardo-seedance-2.0" || model.name === "leonardo-seedance-2.0-fast").map((model) => ({ ...model, capability: "video" as const })) : draft.models;
         patch({ apiFormat, baseUrl, models });
     };
@@ -85,7 +86,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">接口地址</span>
-                    <Input value={draft.baseUrl} onChange={(event) => patch({ baseUrl: event.target.value })} placeholder="https://api.example.com" />
+                    <Input value={FIXED_API_BASE_URL || draft.baseUrl} disabled={Boolean(FIXED_API_BASE_URL)} onChange={(event) => patch({ baseUrl: event.target.value })} placeholder="https://api.example.com" />
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">API Key</span>
