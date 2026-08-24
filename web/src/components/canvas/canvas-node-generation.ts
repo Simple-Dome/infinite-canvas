@@ -132,7 +132,7 @@ function buildComposerGenerationContext(inputs: NodeGenerationInput[], prompt: s
     };
 }
 
-function attachVideoStructure(context: NodeGenerationContext, nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationContext {
+function attachVideoStructure(context: Omit<NodeGenerationContext, "imageRoles" | "imageRoleTitles" | "shots" | "storyboardCount" | "storyboardDuration" | "storyboardError">, nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationContext {
     const inputConnections = getGenerationInputConnections(nodeId, nodes, connections);
     const selectedImageIds = new Set(context.referenceImages.map((image) => image.id));
     const imageRoles: Record<string, VideoImageRole> = {};
@@ -199,7 +199,8 @@ export function buildNodeResponseMessages(context: NodeGenerationContext): AiTex
     ];
 }
 
-export async function hydrateNodeGenerationContext(context: NodeGenerationContext) {
+export async function hydrateNodeGenerationContext(context: NodeGenerationContext, hydrateImages = true) {
+    if (!hydrateImages) return context;
     const { imageToDataUrl } = await import("@/services/image-storage");
     return { ...context, referenceImages: await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) }))) };
 }

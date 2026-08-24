@@ -15,6 +15,7 @@ import type { CanvasGenerationMode, CanvasNodeData, CanvasNodeMetadata } from "@
 import type { NodeGenerationContext, NodeGenerationInput } from "./canvas-node-generation";
 import { CanvasConfigComposer } from "./canvas-config-composer";
 import { CanvasExpandedGenerationPanel } from "./canvas-expanded-generation-panel";
+import { isJimengOfficialVideoConfig } from "@/lib/jimeng-official-video";
 
 type CanvasConfigNodePanelProps = {
     node: CanvasNodeData;
@@ -38,11 +39,12 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, videoStru
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const mode = node.metadata?.generationMode || "image";
     const config = buildNodeConfig(globalConfig, node, mode);
+    const isJimengOfficial = mode === "video" && isJimengOfficialVideoConfig(config);
     const chipStyle = { background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text };
     const frameRoles = Object.values(videoStructure?.imageRoles || {});
     const firstFrameCount = frameRoles.filter((role) => role === "first_frame").length;
     const lastFrameCount = frameRoles.filter((role) => role === "last_frame").length;
-    const storyboardMismatch = Boolean(videoStructure?.shots && videoStructure.storyboardDuration !== Number(config.videoSeconds));
+    const storyboardMismatch = !isJimengOfficial && Boolean(videoStructure?.shots && videoStructure.storyboardDuration !== Number(config.videoSeconds));
     const conflictChipStyle = { ...chipStyle, borderColor: theme.frame.conflict, color: theme.frame.conflict };
     const hasAnyInput = Boolean(inputSummary.textCount || inputSummary.imageCount || inputSummary.videoCount || inputSummary.audioCount);
     const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
@@ -112,9 +114,9 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, videoStru
                 <InputChip label="参考图" value={`${inputSummary.imageCount} 张`} style={chipStyle} />
                 <InputChip label="参考视频" value={`${inputSummary.videoCount} 个`} style={chipStyle} />
                 <InputChip label="参考音频" value={`${inputSummary.audioCount} 个`} style={chipStyle} />
-                {mode === "video" && videoStructure?.storyboardCount ? <InputChip label="分镜" value={`${videoStructure.shots?.length || 0} 镜 / ${videoStructure.storyboardDuration} 秒`} style={storyboardMismatch || videoStructure.storyboardError ? conflictChipStyle : chipStyle} /> : null}
-                {mode === "video" && firstFrameCount ? <InputChip label="首帧" value={`${firstFrameCount} 张`} style={firstFrameCount > 1 ? conflictChipStyle : chipStyle} /> : null}
-                {mode === "video" && lastFrameCount ? <InputChip label="尾帧" value={`${lastFrameCount} 张`} style={lastFrameCount > 1 ? conflictChipStyle : chipStyle} /> : null}
+                {mode === "video" && videoStructure?.storyboardCount ? <InputChip label="分镜" value={`${videoStructure.shots?.length || 0} 镜 / ${videoStructure.storyboardDuration} 秒`} style={storyboardMismatch || (!isJimengOfficial && videoStructure.storyboardError) ? conflictChipStyle : chipStyle} /> : null}
+                {mode === "video" && firstFrameCount ? <InputChip label="首帧" value={`${firstFrameCount} 张`} style={!isJimengOfficial && firstFrameCount > 1 ? conflictChipStyle : chipStyle} /> : null}
+                {mode === "video" && lastFrameCount ? <InputChip label="尾帧" value={`${lastFrameCount} 张`} style={!isJimengOfficial && lastFrameCount > 1 ? conflictChipStyle : chipStyle} /> : null}
                 {!expanded ? (
                     <button type="button" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2 text-[11px]" style={chipStyle} onMouseDown={(event) => event.stopPropagation()} onClick={onComposerToggle}>
                         <Settings2 className="size-3.5" />

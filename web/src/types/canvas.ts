@@ -39,7 +39,7 @@ export type CanvasImageGenerationType = "generation" | "edit";
 
 export type CanvasRemoteVideoTask = {
     id: string;
-    provider: "openai" | "seedance" | "jimeng933" | "jimeng431" | "plugin";
+    provider: "openai" | "seedance" | "jimeng933" | "jimeng431" | "jimengOfficial" | "plugin";
     model: string;
     remoteStatus: string;
     remoteProgress?: number;
@@ -47,6 +47,7 @@ export type CanvasRemoteVideoTask = {
     autoResume: boolean;
     createdAt: number;
     lastCheckedAt?: number;
+    uploadSessionId?: string;
 };
 
 export type CanvasNodeMetadata = {

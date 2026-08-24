@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { FIXED_API_BASE_URL } from "@/constant/env";
 import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { JIMENG_OFFICIAL_MODELS } from "@/lib/jimeng-official-video";
 import { ModelScriptEditor } from "./model-script-editor";
 import { ModelSelectModal } from "./model-select-modal";
 
@@ -13,6 +14,7 @@ const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
     { label: "火山方舟", value: "ark" },
     { label: "933 即梦", value: "jimeng933" },
     { label: "431 即梦", value: "jimeng431" },
+    { label: "官方满血即梦", value: "jimengOfficial" },
 ];
 
 const capabilityOptions: Array<{ label: string; value: ModelCapability }> = [
@@ -40,7 +42,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
 
     const changeApiFormat = (apiFormat: ApiCallFormat) => {
         const baseUrl = FIXED_API_BASE_URL || (!draft.baseUrl.trim() || draft.baseUrl.trim() === defaultBaseUrlForApiFormat(draft.apiFormat) ? defaultBaseUrlForApiFormat(apiFormat) : draft.baseUrl);
-        const models = apiFormat === "jimeng431" ? draft.models.filter((model) => model.name === "leonardo-seedance-2.0" || model.name === "leonardo-seedance-2.0-fast").map((model) => ({ ...model, capability: "video" as const })) : draft.models;
+        const models = modelsForApiFormat(draft.models, apiFormat);
         patch({ apiFormat, baseUrl, models });
     };
 
@@ -54,7 +56,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     const removeModel = (name: string) => setModels(draft.models.filter((model) => model.name !== name));
 
     const save = () => {
-        const models = normalizeChannelModels(draft.models).filter((model) => draft.apiFormat !== "jimeng431" || model.name === "leonardo-seedance-2.0" || model.name === "leonardo-seedance-2.0-fast").map((model) => draft.apiFormat === "jimeng431" ? { ...model, capability: "video" as const } : model);
+        const models = modelsForApiFormat(normalizeChannelModels(draft.models), draft.apiFormat);
         onSave({ ...draft, name: draft.name.trim() || "未命名渠道", models });
         onClose();
     };
@@ -87,6 +89,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">接口地址</span>
                     <Input value={FIXED_API_BASE_URL || draft.baseUrl} disabled={Boolean(FIXED_API_BASE_URL)} onChange={(event) => patch({ baseUrl: event.target.value })} placeholder="https://api.example.com" />
+                    {draft.apiFormat === "jimengOfficial" ? <span className="mt-1 block text-xs text-stone-500">本地联调填写 Cherry 地址 http://localhost:3000（画布仍运行在 3002）；参考素材会凭预签名地址从浏览器直传 Cloudflare R2。</span> : null}
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">API Key</span>
@@ -137,4 +140,13 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
             />
         </Drawer>
     );
+}
+
+function modelsForApiFormat(models: ChannelModel[], apiFormat: ApiCallFormat) {
+    if (apiFormat === "jimengOfficial") {
+        const existing = new Map(models.map((model) => [model.name, model]));
+        return JIMENG_OFFICIAL_MODELS.map((name) => ({ ...existing.get(name), name, capability: "video" as const }));
+    }
+    if (apiFormat === "jimeng431") return models.filter((model) => model.name === "leonardo-seedance-2.0" || model.name === "leonardo-seedance-2.0-fast").map((model) => ({ ...model, capability: "video" as const }));
+    return models;
 }

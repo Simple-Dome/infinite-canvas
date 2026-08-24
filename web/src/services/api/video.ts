@@ -6,10 +6,12 @@ import { getMediaBlob, uploadMediaFile, type UploadedFile } from "@/services/fil
 import { getImageBlob, imageToDataUrl } from "@/services/image-storage";
 import { isJimeng431VideoConfig, normalizeJimeng431Ratio, normalizeJimeng431Resolution, validateJimeng431VideoInput } from "@/lib/jimeng431-video";
 import { isJimeng933VideoConfig, normalizeJimeng933Ratio, normalizeJimeng933Resolution, validateJimeng933VideoInput, type VideoImageRole, type VideoShot } from "@/lib/jimeng933-video";
+import { buildJimengOfficialRequest, isJimengOfficialVideoConfig, normalizeJimengOfficialRatio } from "@/lib/jimeng-official-video";
 import { boolConfig, buildSeedancePromptText, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceVideoReferenceError } from "@/lib/seedance-video";
 import { optimizeVideoReferenceImageDataUrl } from "@/lib/video-reference-preprocess";
 import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, resolveTaskModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
+import { deleteJimengOfficialUploadSession, uploadJimengOfficialReferences } from "./jimeng-official-r2";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -56,7 +58,7 @@ export type VideoGenerationInput = {
     imageRoles?: Record<string, VideoImageRole>;
     shots?: VideoShot[];
 };
-export type VideoGenerationTask = { id: string; provider: "openai" | "seedance" | "jimeng933" | "jimeng431" | "plugin"; model: string };
+export type VideoGenerationTask = { id: string; provider: "openai" | "seedance" | "jimeng933" | "jimeng431" | "jimengOfficial" | "plugin"; model: string; uploadSessionId?: string };
 export type VideoGenerationTaskState =
     | { status: "pending"; remoteStatus: string; progress?: number }
     | { status: "completed"; remoteStatus: string; progress?: number; result?: VideoGenerationResult; resultUrl?: string }
@@ -169,6 +171,7 @@ export async function createVideoGenerationTask(config: AiConfig, input: VideoGe
     assertVideoConfig(requestConfig, requestConfig.model);
     if (isJimeng933VideoConfig(requestConfig)) return createJimeng933VideoTask(requestConfig, selectedModel, input, options);
     if (isJimeng431VideoConfig(requestConfig)) return createJimeng431VideoTask(requestConfig, selectedModel, input, options);
+    if (isJimengOfficialVideoConfig(requestConfig)) return createJimengOfficialVideoTask(requestConfig, selectedModel, input, options);
     if (input.seed !== undefined) throw new Error("当前视频渠道不支持 Seed");
     if (input.shots !== undefined) throw new Error("当前视频渠道不支持结构化分镜");
     if (isSeedanceVideoConfig(requestConfig)) {
@@ -188,6 +191,7 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
     assertVideoConfig(requestConfig, requestConfig.model);
     if (task.provider === "jimeng933") return pollJimeng933VideoTask(requestConfig, task, options);
     if (task.provider === "jimeng431") return pollJimeng431VideoTask(requestConfig, task, options);
+    if (task.provider === "jimengOfficial") return pollJimengOfficialVideoTask(requestConfig, task, options);
     return task.provider === "seedance" ? pollSeedanceTask(requestConfig, task, options) : pollOpenAIVideoTask(requestConfig, task, options);
 }
 
@@ -239,11 +243,15 @@ export async function downloadVideoGenerationTask(config: AiConfig, task: VideoG
     }
     const requestConfig = resolveTaskModelRequestConfig(config, task.model);
     assertVideoConfig(requestConfig, requestConfig.model);
-    const completedState = state?.status === "completed" ? state : task.provider === "jimeng933" ? await pollJimeng933VideoTask(requestConfig, task, options) : task.provider === "jimeng431" ? await pollJimeng431VideoTask(requestConfig, task, options) : task.provider === "seedance" ? await pollSeedanceTask(requestConfig, task, options) : await pollOpenAIVideoTask(requestConfig, task, options);
+    const completedState = state?.status === "completed" ? state : task.provider === "jimeng933" ? await pollJimeng933VideoTask(requestConfig, task, options) : task.provider === "jimeng431" ? await pollJimeng431VideoTask(requestConfig, task, options) : task.provider === "jimengOfficial" ? await pollJimengOfficialVideoTask(requestConfig, task, options) : task.provider === "seedance" ? await pollSeedanceTask(requestConfig, task, options) : await pollOpenAIVideoTask(requestConfig, task, options);
     if (completedState.status !== "completed") throw new Error(completedState.status === "failed" ? completedState.error : "视频任务尚未完成");
     if (completedState.result) return completedState.result;
     if (task.provider === "jimeng933") return downloadJimeng933VideoTask(requestConfig, task, options);
     if (task.provider === "jimeng431") return downloadJimeng431VideoTask(requestConfig, task, completedState.resultUrl, options);
+    if (task.provider === "jimengOfficial") {
+        if (!completedState.resultUrl) throw new Error("官方满血即梦任务已完成，但没有返回 download_url");
+        return videoResultFromUrl(completedState.resultUrl, options);
+    }
     if (completedState.resultUrl) return videoResultFromUrl(completedState.resultUrl, options);
     if (task.provider === "seedance") throw new Error("Seedance 任务成功但没有返回视频 URL");
     try {
@@ -265,6 +273,57 @@ export async function storeGeneratedVideo(result: VideoGenerationResult): Promis
         }
     }
     throw new Error("视频接口没有返回可播放的视频");
+}
+
+async function createJimengOfficialVideoTask(config: AiConfig, model: string, input: VideoGenerationInput, options?: VideoRequestOptions): Promise<VideoGenerationTask> {
+    const idempotencyKey = options?.idempotencyKey || nanoid();
+    const uploaded = await uploadJimengOfficialReferences(config, input, idempotencyKey, options?.signal);
+    const body = buildJimengOfficialRequest({
+        model: modelOptionName(model),
+        prompt: input.prompt,
+        negativePrompt: input.negativePrompt,
+        aspectRatio: normalizeJimengOfficialRatio(config.videoSize),
+        generateAudio: boolConfig(config.videoGenerateAudio, true),
+        seed: input.seed,
+        shots: input.shots,
+        imageRoles: input.imageRoles,
+        references: uploaded.references,
+    });
+    try {
+        const create = () => axios.post<JimengTaskResponse>(aiApiUrl(config, "/videos"), body, { headers: { ...aiHeaders(config, "application/json"), "Idempotency-Key": idempotencyKey }, signal: options?.signal });
+        let response: Awaited<ReturnType<typeof create>>;
+        try {
+            response = await create();
+        } catch (error) {
+            if (!isRetryableJimengCreateError(error) || options?.signal?.aborted) throw error;
+            response = await create();
+        }
+        const taskId = response.data.id || response.data.task_id;
+        if (!taskId) throw new Error("官方满血即梦接口没有返回任务 ID");
+        return { id: taskId, provider: "jimengOfficial", model, uploadSessionId: uploaded.sessionId };
+    } catch (error) {
+        if (uploaded.sessionId && isDefinitiveJimengCreateFailure(error)) await cleanupJimengOfficialUpload(config, uploaded.sessionId);
+        throw new Error(await readJimengOfficialAxiosError(error, "官方满血即梦任务创建失败"));
+    }
+}
+
+async function pollJimengOfficialVideoTask(config: AiConfig, task: VideoGenerationTask, options?: Pick<VideoRequestOptions, "signal">): Promise<VideoGenerationTaskState> {
+    try {
+        const state = (await axios.get<JimengTaskResponse>(aiApiUrl(config, `/videos/${encodeURIComponent(task.id)}`), { headers: aiHeaders(config), signal: options?.signal })).data;
+        const remoteStatus = normalizeRemoteStatus(state.status);
+        const progress = normalizeProgress(state.progress);
+        if (remoteStatus === "completed") {
+            if (task.uploadSessionId) await cleanupJimengOfficialUpload(config, task.uploadSessionId);
+            return { status: "completed", remoteStatus, progress, ...(state.download_url ? { resultUrl: state.download_url } : {}) };
+        }
+        if (remoteStatus === "failed") {
+            if (task.uploadSessionId) await cleanupJimengOfficialUpload(config, task.uploadSessionId);
+            return { status: "failed", remoteStatus, progress, error: readApiErrorMessage(state.error?.message) || readApiErrorMessage(state.message) || "官方满血即梦视频生成失败" };
+        }
+        return { status: "pending", remoteStatus, progress };
+    } catch (error) {
+        throw new Error(await readJimengOfficialAxiosError(error, "官方满血即梦任务查询失败"));
+    }
 }
 
 async function createJimeng933VideoTask(config: AiConfig, model: string, input: VideoGenerationInput, options?: VideoRequestOptions): Promise<VideoGenerationTask> {
@@ -406,6 +465,21 @@ function isRetryableJimengCreateError(error: unknown) {
     if (!axios.isAxiosError(error)) return false;
     const status = error.response?.status;
     return !status || status === 429 || status >= 500;
+}
+
+function isDefinitiveJimengCreateFailure(error: unknown) {
+    if (axios.isCancel(error) || (error instanceof DOMException && error.name === "AbortError")) return false;
+    if (!axios.isAxiosError(error)) return true;
+    const status = error.response?.status;
+    return Boolean(status && status >= 400 && status < 500 && status !== 429);
+}
+
+async function cleanupJimengOfficialUpload(config: AiConfig, sessionId: string) {
+    try {
+        await deleteJimengOfficialUploadSession(config, sessionId);
+    } catch {
+        // Cherry 定时清理和 R2 生命周期继续兜底，不影响任务终态。
+    }
 }
 
 async function pollJimeng431VideoTask(config: AiConfig, task: VideoGenerationTask, options?: Pick<VideoRequestOptions, "signal">): Promise<VideoGenerationTaskState> {
@@ -938,6 +1012,17 @@ function readAxiosError(error: unknown, fallback: string) {
 
 async function readJimeng933AxiosError(error: unknown, fallback: string) {
     return readJimengAxiosError(error, fallback, "933");
+}
+
+async function readJimengOfficialAxiosError(error: unknown, fallback: string) {
+    if (axios.isCancel(error)) return "请求已取消";
+    if (axios.isAxiosError(error)) {
+        const responseData = error.response?.data;
+        const raw = responseData instanceof Blob ? readJimeng933ErrorMessage(await responseData.text()) : readJimeng933ErrorMessage(responseData);
+        return raw || (error.response?.status ? `${fallback}（${error.response.status}）` : fallback);
+    }
+    if (error instanceof DOMException && error.name === "AbortError") return "请求已取消";
+    return error instanceof Error ? readApiErrorMessage(error.message) || error.message : fallback;
 }
 
 async function readJimengAxiosError(error: unknown, fallback: string, provider: "431" | "933") {

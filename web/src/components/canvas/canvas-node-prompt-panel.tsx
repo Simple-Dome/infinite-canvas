@@ -19,6 +19,7 @@ import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-refer
 import type { NodeGenerationContext } from "./canvas-node-generation";
 import type { NodeGenerationInput } from "./canvas-node-generation";
 import { isJimeng933VideoConfig } from "@/lib/jimeng933-video";
+import { isJimengOfficialVideoConfig } from "@/lib/jimeng-official-video";
 import { CanvasExpandedGenerationPanel } from "./canvas-expanded-generation-panel";
 import { CanvasReferenceThumbnailStrip } from "./canvas-reference-thumbnail-strip";
 
@@ -51,6 +52,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const isEditingExistingContent = hasTextContent || hasImageContent;
     const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
     const hasStoryboard = mode === "video" && Boolean(videoStructure?.shots?.length);
+    const isJimengOfficial = mode === "video" && isJimengOfficialVideoConfig(config);
 
     // 仅在切换到其它节点时恢复对应提示词;同一节点生成完成后继续保留当前输入。
     useEffect(() => {
@@ -96,7 +98,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
             />
 
-            {mode === "video" && videoStructure ? <VideoStructureSummary context={videoStructure} duration={Number(config.videoSeconds)} supported={isJimeng933VideoConfig(config)} theme={theme} /> : null}
+            {mode === "video" && videoStructure ? <VideoStructureSummary context={videoStructure} duration={Number(config.videoSeconds)} supported={isJimeng933VideoConfig(config) || isJimengOfficial} validateLocally={!isJimengOfficial} theme={theme} /> : null}
 
             <div className="mt-2 flex min-w-0 shrink-0 items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
@@ -162,11 +164,11 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     return expanded ? <CanvasExpandedGenerationPanel title={node.title || "节点"} onClose={() => onExpandedChange?.(false)}>{panel}</CanvasExpandedGenerationPanel> : panel;
 }
 
-function VideoStructureSummary({ context, duration, supported, theme }: { context: NodeGenerationContext; duration: number; supported: boolean; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
+function VideoStructureSummary({ context, duration, supported, validateLocally, theme }: { context: NodeGenerationContext; duration: number; supported: boolean; validateLocally: boolean; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
     const roles = Object.values(context.imageRoles);
     const first = roles.filter((role) => role === "first_frame").length;
     const last = roles.filter((role) => role === "last_frame").length;
-    const conflict = first > 1 || last > 1 || Boolean(context.storyboardError) || Boolean(context.shots && context.storyboardDuration !== duration);
+    const conflict = validateLocally && (first > 1 || last > 1 || Boolean(context.storyboardError) || Boolean(context.shots && context.storyboardDuration !== duration));
     if (!first && !last && !context.storyboardCount) return null;
     return (
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-[11px]" style={{ borderColor: theme.node.stroke, color: conflict ? theme.frame.conflict : theme.node.muted }}>

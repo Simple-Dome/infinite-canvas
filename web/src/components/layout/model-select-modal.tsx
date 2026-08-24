@@ -3,6 +3,7 @@ import { RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchChannelModels } from "@/services/api/image";
+import { isJimengOfficialModel } from "@/lib/jimeng-official-video";
 import type { ModelChannel } from "@/stores/use-config-store";
 
 // 选择渠道模型弹窗：拉取上游模型列表或手动增加，勾选后才会进入渠道模型列表。
@@ -53,6 +54,10 @@ export function ModelSelectModal({ open, channel, selectedNames, onConfirm, onCl
         if (!name) return;
         if (channel?.apiFormat === "jimeng431" && name !== "leonardo-seedance-2.0" && name !== "leonardo-seedance-2.0-fast") {
             message.error("431 即梦仅支持 leonardo-seedance-2.0 和 leonardo-seedance-2.0-fast");
+            return;
+        }
+        if (channel?.apiFormat === "jimengOfficial" && !isJimengOfficialModel(name)) {
+            message.error("官方满血即梦仅支持四个固定 Seedance 2.0 模型");
             return;
         }
         if (!fetched.includes(name) && !existing.includes(name)) setFetched((current) => [name, ...current]);

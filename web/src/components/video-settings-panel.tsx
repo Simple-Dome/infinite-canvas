@@ -4,6 +4,7 @@ import { Slider, Switch } from "antd";
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { JIMENG431_DURATION_OPTIONS, JIMENG431_RATIO_OPTIONS, JIMENG431_RESOLUTION_OPTIONS, isJimeng431VideoConfig, normalizeJimeng431Ratio, normalizeJimeng431Resolution } from "@/lib/jimeng431-video";
 import { JIMENG933_DURATION_OPTIONS, JIMENG933_RATIO_OPTIONS, JIMENG933_RESOLUTION_OPTIONS, isJimeng933VideoConfig, normalizeJimeng933Ratio, normalizeJimeng933Resolution } from "@/lib/jimeng933-video";
+import { JIMENG_OFFICIAL_RATIO_OPTIONS, isJimengOfficialVideoConfig, jimengOfficialModelResolution, normalizeJimengOfficialRatio } from "@/lib/jimeng-official-video";
 import { boolConfig, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceDurationOptions, seedancePixelLabel, seedanceRatioOptions, seedanceResolutionOptions } from "@/lib/seedance-video";
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import { modelOptionName, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
@@ -39,6 +40,9 @@ type VideoSettingsPanelProps = {
 
 export function VideoSettingsPanel({ config, model, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
     const requestConfig = resolveModelRequestConfig(config, model);
+    if (isJimengOfficialVideoConfig(requestConfig)) {
+        return <JimengOfficialVideoSettingsPanel config={config} model={model} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
+    }
     if (isSeedanceVideoConfig(requestConfig)) {
         return <SeedanceVideoSettingsPanel config={config} model={model} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
     }
@@ -137,6 +141,44 @@ export function VideoSettingsPanel({ config, model, onConfigChange, theme, showT
                     <div className="grid gap-2 rounded-xl border p-2.5" style={{ borderColor: theme.node.stroke }}>
                         <SwitchRow label="生成声音" checked={generateAudio} theme={theme} onChange={(checked) => onConfigChange("videoGenerateAudio", String(checked))} />
                         <SeedControl config={config} max={isJimeng431 ? 4_294_967_295 : 2_147_483_647} theme={theme} onConfigChange={onConfigChange} />
+                    </div>
+                </SettingGroup>
+            </div>
+        </ImageSettingsTheme>
+    );
+}
+
+function JimengOfficialVideoSettingsPanel({ config, model, onConfigChange, theme, showTitle, className }: VideoSettingsPanelProps) {
+    const ratio = normalizeJimengOfficialRatio(config.videoSize);
+    const resolution = jimengOfficialModelResolution(modelOptionName(model));
+    const generateAudio = boolConfig(config.videoGenerateAudio, true);
+    return (
+        <ImageSettingsTheme theme={theme}>
+            <div className={className} style={{ color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()}>
+                {showTitle ? <div className="text-lg font-semibold">视频设置</div> : null}
+                <SettingGroup title="清晰度（由模型决定）" color={theme.node.muted}>
+                    <div className="flex h-9 items-center justify-center rounded-full border text-sm" style={{ borderColor: theme.node.text, color: theme.node.text }}>
+                        {resolution || "由模型决定"}
+                    </div>
+                </SettingGroup>
+                <SettingGroup title="尺寸" color={theme.node.muted}>
+                    <div className="grid grid-cols-3 gap-2.5">
+                        {JIMENG_OFFICIAL_RATIO_OPTIONS.map((value) => (
+                            <button key={value} type="button" className="flex h-[68px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border bg-transparent px-1 text-sm transition hover:opacity-80" style={{ borderColor: ratio === value ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={() => onConfigChange("videoSize", value)}>
+                                <SizePreview width={ratioPreview(value).width} height={ratioPreview(value).height} color={theme.node.text} />
+                                <span>{ratioLabel(value)}</span>
+                                <span className="text-[10px] leading-none opacity-55">{value}</span>
+                            </button>
+                        ))}
+                    </div>
+                </SettingGroup>
+                <SettingGroup title="视频时长" color={theme.node.muted}>
+                    <div className="flex h-9 items-center justify-center rounded-full border text-sm" style={{ borderColor: theme.node.text, color: theme.node.text }}>15s（固定）</div>
+                </SettingGroup>
+                <SettingGroup title="输出" color={theme.node.muted}>
+                    <div className="grid gap-2 rounded-xl border p-2.5" style={{ borderColor: theme.node.stroke }}>
+                        <SwitchRow label="生成声音" checked={generateAudio} theme={theme} onChange={(checked) => onConfigChange("videoGenerateAudio", String(checked))} />
+                        <SeedControl config={config} theme={theme} onConfigChange={onConfigChange} />
                     </div>
                 </SettingGroup>
             </div>
@@ -330,6 +372,7 @@ function ratioLabel(value: string) {
     if (value === "1:1") return "方形";
     if (value === "4:3") return "标准横屏";
     if (value === "3:4") return "标准竖屏";
+    if (value === "adaptive") return "自适应";
     return "宽银幕";
 }
 
