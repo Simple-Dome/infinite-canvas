@@ -10,14 +10,14 @@ afterEach(() => {
 
 describe("official Jimeng R2 upload", () => {
     test("builds signer endpoints from the configured localhost Base URL", () => {
-        expect(buildJimengOfficialR2ApiUrl("http://localhost:3002", "/api/canvas/r2/uploads/presign")).toBe("http://localhost:3002/api/canvas/r2/uploads/presign");
-        expect(buildJimengOfficialR2ApiUrl("http://localhost:3002/v1/", "/api/canvas/r2/uploads/presign")).toBe("http://localhost:3002/api/canvas/r2/uploads/presign");
+        expect(buildJimengOfficialR2ApiUrl("http://localhost:3000", "/api/canvas/r2/uploads/presign")).toBe("http://localhost:3000/api/canvas/r2/uploads/presign");
+        expect(buildJimengOfficialR2ApiUrl("http://localhost:3000/v1/", "/api/canvas/r2/uploads/presign")).toBe("http://localhost:3000/api/canvas/r2/uploads/presign");
     });
 
     test("does not call the signer when the generation has no references", async () => {
         const fetchMock = mock(() => Promise.reject(new Error("unexpected fetch")));
         globalThis.fetch = fetchMock as typeof fetch;
-        const result = await uploadJimengOfficialReferences({ baseUrl: "http://localhost:3002", apiKey: "token" }, { images: [], videos: [], audios: [] }, "generation-1");
+        const result = await uploadJimengOfficialReferences({ baseUrl: "http://localhost:3000", apiKey: "token" }, { images: [], videos: [], audios: [] }, "generation-1");
         expect(result).toEqual({ references: [] });
         expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -28,7 +28,7 @@ describe("official Jimeng R2 upload", () => {
         const fetchMock = mock(async (input: string | URL | Request, init?: RequestInit) => {
             const url = String(input);
             if (url.startsWith("data:")) return realFetch(input, init);
-            if (url === "http://localhost:3002/api/canvas/r2/uploads/presign") {
+            if (url === "http://localhost:3000/api/canvas/r2/uploads/presign") {
                 const headers = new Headers(init?.headers);
                 expect(headers.get("Authorization")).toBe("Bearer new-api-token");
                 expect(headers.get("Idempotency-Key")).toBe("generation-2");
@@ -45,7 +45,7 @@ describe("official Jimeng R2 upload", () => {
                 expect(init?.body).toBeInstanceOf(Blob);
                 return new Response(null, { status: 200 });
             }
-            if (url === "http://localhost:3002/api/canvas/r2/uploads/complete") {
+            if (url === "http://localhost:3000/api/canvas/r2/uploads/complete") {
                 expect(JSON.parse(String(init?.body))).toEqual({ session_id: "session-1" });
                 return Response.json({
                     session_id: "session-1",
@@ -57,7 +57,7 @@ describe("official Jimeng R2 upload", () => {
         globalThis.fetch = fetchMock as typeof fetch;
 
         const result = await uploadJimengOfficialReferences(
-            { baseUrl: "http://localhost:3002/v1", apiKey: "new-api-token" },
+            { baseUrl: "http://localhost:3000/v1", apiKey: "new-api-token" },
             {
                 images: [
                     { id: "normal", name: "normal.png", type: "image/png", dataUrl: "data:image/png;base64,AA==" },
@@ -79,13 +79,13 @@ describe("official Jimeng R2 upload", () => {
 
     test("cleans a session through the configured Base URL with only the New API token", async () => {
         const fetchMock = mock(async (input: string | URL | Request, init?: RequestInit) => {
-            expect(String(input)).toBe("http://localhost:3002/api/canvas/r2/uploads/session%2Fone");
+            expect(String(input)).toBe("http://localhost:3000/api/canvas/r2/uploads/session%2Fone");
             expect(init?.method).toBe("DELETE");
             expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer token-a");
             return new Response(null, { status: 204 });
         });
         globalThis.fetch = fetchMock as typeof fetch;
-        await deleteJimengOfficialUploadSession({ baseUrl: "http://localhost:3002", apiKey: "token-a" }, "session/one");
+        await deleteJimengOfficialUploadSession({ baseUrl: "http://localhost:3000", apiKey: "token-a" }, "session/one");
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
@@ -106,11 +106,11 @@ describe("official Jimeng R2 upload", () => {
 
         await expect(
             uploadJimengOfficialReferences(
-                { baseUrl: "http://localhost:3002", apiKey: "token" },
+                { baseUrl: "http://localhost:3000", apiKey: "token" },
                 { images: [{ id: "image-1", name: "image.png", type: "image/png", dataUrl: "data:image/png;base64,AA==" }], videos: [], audios: [] },
                 "generation-3",
             ),
         ).rejects.toThrow("上传图片「image.png」到 Cloudflare R2 失败（500）");
-        expect(requests).toContain("http://localhost:3002/api/canvas/r2/uploads/failed-session");
+        expect(requests).toContain("http://localhost:3000/api/canvas/r2/uploads/failed-session");
     });
 });

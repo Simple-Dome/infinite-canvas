@@ -78,7 +78,7 @@ describe("getVideoPollingPolicy", () => {
 describe("official Jimeng video service", () => {
     test("creates a pure JSON official task against the configured localhost Base URL", async () => {
         const post = mock(async (url: string, body: unknown, options?: { headers?: Record<string, string> }) => {
-            expect(url).toBe("http://localhost:3002/v1/videos");
+            expect(url).toBe("http://localhost:3000/v1/videos");
             expect(options?.headers?.Authorization).toBe("Bearer local-token");
             expect(options?.headers?.["Content-Type"]).toBe("application/json");
             expect(options?.headers?.["Idempotency-Key"]).toBe("generation-json");
@@ -124,7 +124,7 @@ function officialConfig(): AiConfig {
         videoModel: model,
         videoSize: "1280x720",
         videoGenerateAudio: "false",
-        channels: [{ id: "official", name: "官方满血即梦", baseUrl: "http://localhost:3002", apiKey: "local-token", apiFormat: "jimengOfficial", models: [{ name: "seedance-2.0-0826-720p", capability: "video" }] }],
+        channels: [{ id: "official", name: "官方满血即梦", baseUrl: "http://localhost:3000", apiKey: "local-token", apiFormat: "jimengOfficial", models: [{ name: "seedance-2.0-0826-720p", capability: "video" }] }],
         models: [model],
     };
 }
