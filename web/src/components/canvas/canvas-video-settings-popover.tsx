@@ -4,9 +4,10 @@ import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
 import { VideoSettingsPanel, videoResolutionLabel, videoSecondsLabel, videoSizeLabel } from "@/components/video-settings-panel";
+import { isJimengOfficialVideoConfig, jimengOfficialModelResolution, normalizeJimengOfficialRatio } from "@/lib/jimeng-official-video";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { AiConfig } from "@/stores/use-config-store";
+import { modelOptionName, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { useCanvasViewport } from "./infinite-canvas";
 
 type CanvasVideoSettingsPopoverProps = {
@@ -26,6 +27,7 @@ export function CanvasVideoSettingsPopover({ config, model, onConfigChange, butt
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
+    const isJimengOfficial = isJimengOfficialVideoConfig(resolveModelRequestConfig(config, model));
     const syncPosition = useCallback(() => setButtonRect(buttonRef.current?.getBoundingClientRect() || null), []);
 
     useLayoutEffect(() => {
@@ -60,7 +62,7 @@ export function CanvasVideoSettingsPopover({ config, model, onConfigChange, butt
             <span ref={buttonRef} className="inline-flex min-w-0">
                 <Button size="small" type="text" className={buttonClassName || "!h-8 !max-w-[170px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={() => setOpen((current) => !current)}>
                     <span className="truncate">
-                        {videoResolutionLabel(config.vquality)} · {videoSizeLabel(config.videoSize)} · {videoSecondsLabel(config.videoSeconds)}
+                        {isJimengOfficial ? `${jimengOfficialModelResolution(modelOptionName(model))} · ${videoSizeLabel(normalizeJimengOfficialRatio(config.videoSize))} · 15s` : `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.videoSize)} · ${videoSecondsLabel(config.videoSeconds)}`}
                     </span>
                 </Button>
             </span>

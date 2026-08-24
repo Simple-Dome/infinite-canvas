@@ -387,6 +387,7 @@ function apiFormatLabel(apiFormat: ApiCallFormat) {
     if (apiFormat === "ark") return "火山方舟";
     if (apiFormat === "jimeng933") return "933 即梦";
     if (apiFormat === "jimeng431") return "431 即梦";
+    if (apiFormat === "jimengOfficial") return "官方满血即梦";
     return "OpenAI";
 }
 

@@ -904,7 +904,9 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
 
 export async function fetchChannelModels(channel: ModelChannel) {
     const models = await fetchImageModels({ baseUrl: channel.baseUrl, apiKey: channel.apiKey, apiFormat: channel.apiFormat });
-    return channel.apiFormat === "jimeng431" ? models.filter((model) => model === "leonardo-seedance-2.0" || model === "leonardo-seedance-2.0-fast") : models;
+    if (channel.apiFormat === "jimeng431") return models.filter((model) => model === "leonardo-seedance-2.0" || model === "leonardo-seedance-2.0-fast");
+    if (channel.apiFormat === "jimengOfficial") return models.filter((model) => model === "seedance-2.0-0826-480p" || model === "seedance-2.0-0826-720p" || model === "seedance-2.0-fast-0826-480p" || model === "seedance-2.0-fast-0826-720p");
+    return models;
 }
 
 const defaultGeminiConfig: Pick<AiConfig, "baseUrl" | "apiKey" | "apiFormat" | "model" | "systemPrompt"> = {

@@ -13,6 +13,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { boolConfig, isSeedanceVideoConfig, normalizeSeedanceRatio, seedanceReferenceLabel, seedanceVideoReferenceError, seedanceVideoReferenceHint, SEEDANCE_REFERENCE_LIMITS, SEEDANCE_VIDEO_MIME_TYPES } from "@/lib/seedance-video";
 import { JIMENG431_REFERENCE_LIMITS, isJimeng431VideoConfig } from "@/lib/jimeng431-video";
+import { isJimengOfficialVideoConfig, jimengOfficialModelResolution, normalizeJimengOfficialRatio } from "@/lib/jimeng-official-video";
 import { VIDEO_REFERENCE_IMAGE_MAX_EDGE } from "@/lib/video-reference-preprocess";
 import { deleteStoredMedia, resolveMediaUrl, uploadMediaFile } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
@@ -107,7 +108,8 @@ export default function VideoPage() {
 
     const model = effectiveConfig.videoModel || effectiveConfig.model;
     const isJimeng431 = isJimeng431VideoConfig({ ...effectiveConfig, model });
-    const referenceLimits = isJimeng431 ? { images: JIMENG431_REFERENCE_LIMITS.images, videos: JIMENG431_REFERENCE_LIMITS.videos, audios: JIMENG431_REFERENCE_LIMITS.audios, imageMaxBytes: JIMENG431_REFERENCE_LIMITS.imageMaxBytes, videoMaxBytes: JIMENG431_REFERENCE_LIMITS.videoTotalMaxBytes, audioMaxBytes: JIMENG431_REFERENCE_LIMITS.audioMaxBytes } : SEEDANCE_REFERENCE_LIMITS;
+    const isJimengOfficial = isJimengOfficialVideoConfig({ ...effectiveConfig, model });
+    const referenceLimits = isJimengOfficial ? { images: Number.MAX_SAFE_INTEGER, videos: Number.MAX_SAFE_INTEGER, audios: Number.MAX_SAFE_INTEGER, imageMaxBytes: Number.POSITIVE_INFINITY, videoMaxBytes: Number.POSITIVE_INFINITY, audioMaxBytes: Number.POSITIVE_INFINITY } : isJimeng431 ? { images: JIMENG431_REFERENCE_LIMITS.images, videos: JIMENG431_REFERENCE_LIMITS.videos, audios: JIMENG431_REFERENCE_LIMITS.audios, imageMaxBytes: JIMENG431_REFERENCE_LIMITS.imageMaxBytes, videoMaxBytes: JIMENG431_REFERENCE_LIMITS.videoTotalMaxBytes, audioMaxBytes: JIMENG431_REFERENCE_LIMITS.audioMaxBytes } : SEEDANCE_REFERENCE_LIMITS;
     const canGenerate = Boolean(prompt.trim());
 
     useEffect(() => {
@@ -272,7 +274,7 @@ export default function VideoPage() {
             openConfigDialog(true);
             return null;
         }
-            const videoReferenceError = isJimeng431 ? "" : seedanceVideoReferenceError(videoReferences);
+        const videoReferenceError = isJimeng431 || isJimengOfficial ? "" : seedanceVideoReferenceError(videoReferences);
         if (videoReferenceError) {
             message.error(`${videoReferenceError}。${seedanceVideoReferenceHint}`);
             return null;
@@ -935,15 +937,16 @@ function buildLog({ prompt, model, config, references, videoReferences, audioRef
 function buildVideoConfig(config: AiConfig, model: string): AiConfig {
     const seedance = isSeedanceVideoConfig({ ...config, model });
     const requestConfig = resolveModelRequestConfig(config, model);
-    const videoSize = requestConfig.apiFormat === "jimeng431" ? config.videoSize : seedance ? normalizeSeedanceRatio(config.videoSize) : normalizeVideoSize(config.videoSize);
+    const isJimengOfficial = requestConfig.apiFormat === "jimengOfficial";
+    const videoSize = isJimengOfficial ? normalizeJimengOfficialRatio(config.videoSize) : requestConfig.apiFormat === "jimeng431" ? config.videoSize : seedance ? normalizeSeedanceRatio(config.videoSize) : normalizeVideoSize(config.videoSize);
     return {
         ...config,
         model,
         videoModel: model,
         size: videoSize,
         videoSize,
-        videoSeconds: normalizeVideoSeconds(config.videoSeconds),
-        vquality: normalizeResolution(config.vquality),
+        videoSeconds: isJimengOfficial ? "15" : normalizeVideoSeconds(config.videoSeconds),
+        vquality: isJimengOfficial ? jimengOfficialModelResolution(model).replace(/p$/, "") : normalizeResolution(config.vquality),
         videoGenerateAudio: String(boolConfig(config.videoGenerateAudio, true)),
         videoSeedEnabled: String(boolConfig(config.videoSeedEnabled, false)),
         videoSeed: config.videoSeed || "0",

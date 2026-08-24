@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 
 import { FIXED_API_BASE_URL } from "@/constant/env";
 
-export type ApiCallFormat = "openai" | "gemini" | "ark" | "jimeng933" | "jimeng431";
+export type ApiCallFormat = "openai" | "gemini" | "ark" | "jimeng933" | "jimeng431" | "jimengOfficial";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
@@ -72,6 +72,7 @@ const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 const ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const JIMENG933_BASE_URL = OPENAI_BASE_URL;
 const JIMENG431_BASE_URL = OPENAI_BASE_URL;
+const JIMENG_OFFICIAL_BASE_URL = "http://localhost:3000";
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
@@ -411,6 +412,7 @@ export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
     if (apiFormat === "ark") return ARK_BASE_URL;
     if (apiFormat === "jimeng933") return JIMENG933_BASE_URL;
     if (apiFormat === "jimeng431") return JIMENG431_BASE_URL;
+    if (apiFormat === "jimengOfficial") return JIMENG_OFFICIAL_BASE_URL;
     return OPENAI_BASE_URL;
 }
 
@@ -419,7 +421,7 @@ export function fixedApiBaseUrl(baseUrl: string) {
 }
 
 function normalizeApiFormat(apiFormat: unknown): ApiCallFormat {
-    return apiFormat === "gemini" || apiFormat === "ark" || apiFormat === "jimeng933" || apiFormat === "jimeng431" ? apiFormat : "openai";
+    return apiFormat === "gemini" || apiFormat === "ark" || apiFormat === "jimeng933" || apiFormat === "jimeng431" || apiFormat === "jimengOfficial" ? apiFormat : "openai";
 }
 
 function uniqueModelOptions(models: string[]) {
