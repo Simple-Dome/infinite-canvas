@@ -83,3 +83,4 @@
 - 当前 AI API Key 存在浏览器本地，并由前端直接请求 OpenAI 兼容接口；涉及安全说明时要写清楚。
 - Docker 静态资源路径目前仍是待办项，文档中不要过度承诺生产部署已经完全验证。
 - Agent 对话消息必须同时按 `threadId`、`turnId` 和 `itemId` 归属；实时事件只用于补充未物化的 turn，历史快照成为权威后不得重复合并同一条消息。
+- 如果用户明确指定目标项目，所有代码、文档和状态修改只能发生在该项目目录内；本项目任务不得修改 `/Users/ming/project/cherry-image` 或其他 sibling repository，除非用户单独明确授权。
