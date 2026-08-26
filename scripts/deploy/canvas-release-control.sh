@@ -259,20 +259,25 @@ assert_live_ready() {
     load_profile
     [ -f "$(process_manifest)" ] || die 'run prepare first'
     [[ "$MAX_AGE_SECONDS" =~ ^[1-9][0-9]*$ ]] || die 'max age seconds must be a positive integer'
-    local live_section live_domain status evidence_sha observed_at controller_at freshness age check
+    local live_section live_domain status evidence_sha observed_at controller_at clock_skew freshness age check
     live_section="$(process_manifest)"
     live_domain="$(awk '/^## Live Topology$/{capture=1;next} capture && /^- Discovery Domain:/{sub(/^- Discovery Domain: /,"",$0);print;exit}' "$live_section")"
     status="$(awk '/^## Live Topology$/{capture=1;next} capture && /^- Live Status:/{sub(/^- Live Status: /,"",$0);print;exit}' "$live_section")"
     evidence_sha="$(awk '/^## Live Topology$/{capture=1;next} capture && /^- Evidence SHA-256:/{sub(/^- Evidence SHA-256: /,"",$0);print;exit}' "$live_section")"
     observed_at="$(awk '/^## Live Topology$/{capture=1;next} capture && /^- Observed At:/{sub(/^- Observed At: /,"",$0);print;exit}' "$live_section")"
     controller_at="$(awk '/^## Live Topology$/{capture=1;next} capture && /^- Controller Observed At:/{sub(/^- Controller Observed At: /,"",$0);print;exit}' "$live_section")"
+    clock_skew="$(awk '/^## Live Topology$/{capture=1;next} capture && /^- Clock Skew Seconds:/{sub(/^- Clock Skew Seconds: /,"",$0);print;exit}' "$live_section")"
     [ "$live_domain" = "$DOMAIN" ] || die 'live topology domain does not match profile'
     [ "$status" = ready-for-bluegreen ] || die "live topology status is ${status:-missing}"
     [[ "$evidence_sha" =~ ^[0-9a-f]{64}$ ]] || die 'live topology evidence SHA-256 is invalid'
     validate_timestamp "$observed_at"
     freshness="$observed_at"
     if [ -n "$controller_at" ] && [ "$controller_at" != pending ]; then
-        validate_timestamp "$controller_at"; freshness="$controller_at"
+        validate_timestamp "$controller_at"
+        [[ "$MAX_CLOCK_SKEW_SECONDS" =~ ^[0-9]+$ ]] || die 'max clock skew seconds must be non-negative'
+        [[ "$clock_skew" =~ ^[0-9]+$ ]] || die 'live topology clock skew is invalid'
+        [ "$clock_skew" -le "$MAX_CLOCK_SKEW_SECONDS" ] || die "live topology clock skew ${clock_skew}s exceeds ${MAX_CLOCK_SKEW_SECONDS}s"
+        freshness="$controller_at"
     fi
     age="$(topology_age "$freshness")"
     [ "$age" -ge 0 ] || die 'live topology observation is in the future'
