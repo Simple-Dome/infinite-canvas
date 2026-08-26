@@ -48,12 +48,12 @@ grep -F 'partial_present' "$TEST_ROOT/partial.out" >/dev/null || fail "partial f
 rm -f "$REMOTE_ROOT/release/stale.partial"
 
 transaction="$TEST_ROOT/transaction.sh"
-printf '%s\n' '#!/usr/bin/env bash' 'set -eu' "printf '%s' \"\$1\" > '$REMOTE_ROOT/transaction.result'" > "$transaction"
+printf '%s\n' '#!/usr/bin/env bash' 'set -eu' "printf '%s:%s' \"\$1\" \"\$TEST_TRANSACTION_VALUE\" > '$REMOTE_ROOT/transaction.result'" > "$transaction"
 chmod +x "$transaction"
 SSH_BIN="$FAKE_SSH" "$HELPER" run-transaction \
     --remote test@local --script "$transaction" \
-    --remote-script "$REMOTE_ROOT/scripts/transaction.sh" --arg 'transaction ran' > "$TEST_ROOT/transaction.out"
-grep -Fx 'transaction ran' "$REMOTE_ROOT/transaction.result" >/dev/null || fail "transaction execution or argument quoting"
+    --remote-script "$REMOTE_ROOT/scripts/transaction.sh" --arg 'transaction ran' --env TEST_TRANSACTION_VALUE=env-value > "$TEST_ROOT/transaction.out"
+grep -Fx 'transaction ran:env-value' "$REMOTE_ROOT/transaction.result" >/dev/null || fail "transaction execution, argument quoting, or env passing"
 test -z "$(find "$REMOTE_ROOT" -name '*.partial' -print -quit)" || fail "transaction partial remains"
 
 installed="$TEST_ROOT/installed.sh"

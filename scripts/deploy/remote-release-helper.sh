@@ -24,7 +24,7 @@ Usage:
     [--chunk-bytes <bytes>]
   scripts/deploy/remote-release-helper.sh run-transaction \
     --remote <user@host> --script <path> --remote-script <absolute-path> \
-    [--arg <value> ...]
+    [--arg <value> ...] [--env KEY=VALUE ...]
   scripts/deploy/remote-release-helper.sh install-script \
     --remote <user@host> --script <path> --remote-script <absolute-path>
 
@@ -205,13 +205,17 @@ run_transaction() {
     local script="$2"
     local remote_script="$3"
     shift 3
-    local arg quoted_args="" script_sha
-    for arg in "$@"; do
-        quoted_args="$quoted_args $(shell_quote "$arg")"
+    local arg env_pair quoted_args="" quoted_env="" script_sha
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --env=*) env_pair="${1#--env=}"; [[ "$env_pair" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+$ ]] || die 'invalid transaction environment'; quoted_env="$quoted_env $env_pair" ;;
+            *) quoted_args="$quoted_args $(shell_quote "$1")" ;;
+        esac
+        shift
     done
 
     stage_script "$remote" "$script" "$remote_script" >/dev/null
-    remote_exec "$remote" "bash $(shell_quote "$remote_script")$quoted_args"
+    remote_exec "$remote" "$quoted_env bash $(shell_quote "$remote_script")$quoted_args"
     script_sha="$(sha256_file "$script")"
     printf 'remote_script=%s\nscript_sha256=%s\nstatus=executed\n' "$remote_script" "$script_sha"
 }
@@ -230,6 +234,7 @@ main() {
             --remote-script) require_value "$1" "${2:-}"; remote_script="$2"; shift 2 ;;
             --chunk-bytes) require_value "$1" "${2:-}"; chunk_bytes="$2"; shift 2 ;;
             --arg) require_value "$1" "${2:-}"; transaction_args+=("$2"); shift 2 ;;
+            --env) require_value "$1" "${2:-}"; transaction_args+=("--env=$2"); shift 2 ;;
             -h|--help) usage; exit 0 ;;
             *) die "unknown argument: $1" ;;
         esac
