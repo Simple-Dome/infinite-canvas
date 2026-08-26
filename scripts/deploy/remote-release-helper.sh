@@ -25,6 +25,8 @@ Usage:
   scripts/deploy/remote-release-helper.sh run-transaction \
     --remote <user@host> --script <path> --remote-script <absolute-path> \
     [--arg <value> ...]
+  scripts/deploy/remote-release-helper.sh install-script \
+    --remote <user@host> --script <path> --remote-script <absolute-path>
 
 The helper uses one data-only SSH stream per chunk or script. All control
 commands use ssh -n, so a control command can never consume the next payload.
@@ -180,15 +182,11 @@ transfer_archive() {
     TRANSFER_CHUNK_DIR=""
 }
 
-run_transaction() {
+stage_script() {
     local remote="$1"
     local script="$2"
     local remote_script="$3"
-    shift 3
-    local script_size script_sha partial arg quoted_args=""
-    for arg in "$@"; do
-        quoted_args="$quoted_args $(shell_quote "$arg")"
-    done
+    local script_size script_sha partial
 
     validate_remote_path "$remote_script"
     validate_archive_path "$script"
@@ -199,7 +197,22 @@ run_transaction() {
     remote_exec "$remote" "set -eu; script=$(shell_quote "$remote_script"); partial=$(shell_quote "$partial"); if [ -e \"\$script\" ] || [ -e \"\$partial\" ]; then printf 'transaction-script-exists\\n' >&2; exit 75; fi; mkdir -p \"\$(dirname \"\$script\")\""
     base64_encode "$script" | remote_data "$remote" "umask 077; base64 --decode > $(shell_quote "$partial")"
     remote_exec "$remote" "set -eu; script=$(shell_quote "$remote_script"); partial=$(shell_quote "$partial"); size=\$(wc -c < \"\$partial\" | tr -d '[:space:]'); sha=\$(sha256sum \"\$partial\" | awk '{print \$1}'); [ \"\$size\" = $(shell_quote "$script_size") ] && [ \"\$sha\" = $(shell_quote "$script_sha") ] || exit 75; mv \"\$partial\" \"\$script\""
+    printf 'remote_script=%s\nscript_sha256=%s\nstatus=installed\n' "$remote_script" "$script_sha"
+}
+
+run_transaction() {
+    local remote="$1"
+    local script="$2"
+    local remote_script="$3"
+    shift 3
+    local arg quoted_args="" script_sha
+    for arg in "$@"; do
+        quoted_args="$quoted_args $(shell_quote "$arg")"
+    done
+
+    stage_script "$remote" "$script" "$remote_script" >/dev/null
     remote_exec "$remote" "bash $(shell_quote "$remote_script")$quoted_args"
+    script_sha="$(sha256_file "$script")"
     printf 'remote_script=%s\nscript_sha256=%s\nstatus=executed\n' "$remote_script" "$script_sha"
 }
 
@@ -230,6 +243,10 @@ main() {
         run-transaction)
             [ -n "$remote" ] && [ -n "$script" ] && [ -n "$remote_script" ] || die "run-transaction requires --remote, --script, and --remote-script"
             run_transaction "$remote" "$script" "$remote_script" "${transaction_args[@]}"
+            ;;
+        install-script)
+            [ -n "$remote" ] && [ -n "$script" ] && [ -n "$remote_script" ] || die "install-script requires --remote, --script, and --remote-script"
+            stage_script "$remote" "$script" "$remote_script"
             ;;
         -h|--help) usage ;;
         *) die "unknown command: $command" ;;

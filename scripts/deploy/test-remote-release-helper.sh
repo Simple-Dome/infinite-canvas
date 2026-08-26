@@ -56,4 +56,14 @@ SSH_BIN="$FAKE_SSH" "$HELPER" run-transaction \
 grep -Fx 'transaction ran' "$REMOTE_ROOT/transaction.result" >/dev/null || fail "transaction execution or argument quoting"
 test -z "$(find "$REMOTE_ROOT" -name '*.partial' -print -quit)" || fail "transaction partial remains"
 
+installed="$TEST_ROOT/installed.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'set -eu' "printf installed > '$REMOTE_ROOT/installed.result'" > "$installed"
+chmod +x "$installed"
+SSH_BIN="$FAKE_SSH" "$HELPER" install-script \
+    --remote test@local --script "$installed" \
+    --remote-script "$REMOTE_ROOT/scripts/installed.sh" > "$TEST_ROOT/install.out"
+test -f "$REMOTE_ROOT/scripts/installed.sh" || fail "install-script did not publish script"
+test ! -e "$REMOTE_ROOT/installed.result" || fail "install-script executed a script"
+test -z "$(find "$REMOTE_ROOT" -name '*.partial' -print -quit)" || fail "install-script partial remains"
+
 printf 'remote release helper tests passed\n'
