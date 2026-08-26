@@ -31,7 +31,16 @@ export async function uploadJimengOfficialReferences(
     const sources = orderJimengOfficialReferences(toUploadSources(input), input.imageRoles);
     if (!sources.length) return { references: [] };
 
-    const prepared = await Promise.all(sources.map((source) => prepareUpload(source)));
+    const prepared = await Promise.all(
+        sources.map(async (source) => {
+            try {
+                return await prepareUpload(source);
+            } catch (error) {
+                if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+                throw new Error(`读取官方即梦参考${kindLabel(source.type)}「${source.name}」失败：浏览器无法读取本地素材。请重新上传该素材后再试（可能是本地 Blob URL 或 IndexedDB 文件已失效）`);
+            }
+        }),
+    );
     const presigned = await requestJson<PresignResponse>(buildJimengOfficialR2ApiUrl(config.baseUrl, "/api/canvas/r2/uploads/presign"), {
         method: "POST",
         headers: authHeaders(config.apiKey, idempotencyKey),
@@ -46,12 +55,18 @@ export async function uploadJimengOfficialReferences(
     try {
         await mapWithConcurrency(prepared, 3, async (file) => {
             const signed = presignedById.get(file.clientFileId)!;
-            const response = await fetch(signed.put_url, {
-                method: "PUT",
-                headers: signed.put_headers || { "Content-Type": file.contentType },
-                body: file.blob,
-                signal,
-            });
+            let response: Response;
+            try {
+                response = await fetch(signed.put_url, {
+                    method: "PUT",
+                    headers: signed.put_headers || { "Content-Type": file.contentType },
+                    body: file.blob,
+                    signal,
+                });
+            } catch (error) {
+                if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+                throw new Error(`上传${kindLabel(file.type)}「${file.name}」到 Cloudflare R2 失败：浏览器无法访问 R2。请检查 bucket CORS 是否允许当前 Canvas 来源（${currentOrigin()}）执行 PUT，或重新发起上传获取新的签名`);
+            }
             if (!response.ok) throw new Error(`上传${kindLabel(file.type)}「${file.name}」到 Cloudflare R2 失败（${response.status}）`);
         });
 
@@ -116,7 +131,13 @@ function authHeaders(apiKey: string, idempotencyKey: string) {
 }
 
 async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
-    const response = await fetch(url, init);
+    let response: Response;
+    try {
+        response = await fetch(url, init);
+    } catch (error) {
+        if (init.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+        throw new Error("官方即梦素材控制接口请求失败：请检查 Base URL、API Key 以及 Canvas 页面跨域配置");
+    }
     const text = await response.text();
     let payload: unknown;
     try {
@@ -126,6 +147,10 @@ async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
     }
     if (!response.ok) throw new Error(readErrorMessage(payload) || `官方满血即梦素材接口请求失败（${response.status}）`);
     return payload as T;
+}
+
+function currentOrigin() {
+    return typeof window === "undefined" ? "当前页面来源" : window.location.origin;
 }
 
 function assertPresignResponse(response: PresignResponse, prepared: PreparedUpload[]) {

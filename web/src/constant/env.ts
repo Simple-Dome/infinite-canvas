@@ -1,4 +1,4 @@
-export const DOCS_URL = import.meta.env.VITE_DOC_URL || "https://docs.canvas.best";
+export const DOCS_URL = "https://gptch.cloud/docs/image";
 
 // 发布 profile 可在构建时锁定所有渠道的上游地址。
 export const FIXED_API_BASE_URL = (import.meta.env.VITE_FIXED_API_BASE_URL || "").trim().replace(/\/+$/, "");
