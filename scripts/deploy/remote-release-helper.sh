@@ -4,6 +4,11 @@ set -euo pipefail
 
 DEFAULT_CHUNK_BYTES=3145728
 SSH_BIN="${SSH_BIN:-ssh}"
+SSH_RELEASE_OPTIONS="${SSH_RELEASE_OPTIONS:-}"
+SSH_OPTION_ARGS=()
+if [ -n "$SSH_RELEASE_OPTIONS" ]; then
+    read -r -a SSH_OPTION_ARGS <<< "$SSH_RELEASE_OPTIONS"
+fi
 TRANSFER_CHUNK_DIR=""
 
 die() {
@@ -71,13 +76,21 @@ base64_encode() {
 remote_exec() {
     local remote="$1"
     local command="$2"
-    "$SSH_BIN" -n "$remote" "$command"
+    if [ "${#SSH_OPTION_ARGS[@]}" -gt 0 ]; then
+        "$SSH_BIN" "${SSH_OPTION_ARGS[@]}" -n "$remote" "$command"
+    else
+        "$SSH_BIN" -n "$remote" "$command"
+    fi
 }
 
 remote_data() {
     local remote="$1"
     local command="$2"
-    "$SSH_BIN" "$remote" "$command"
+    if [ "${#SSH_OPTION_ARGS[@]}" -gt 0 ]; then
+        "$SSH_BIN" "${SSH_OPTION_ARGS[@]}" "$remote" "$command"
+    else
+        "$SSH_BIN" "$remote" "$command"
+    fi
 }
 
 make_chunks() {
