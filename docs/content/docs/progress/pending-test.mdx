@@ -6,6 +6,7 @@ description: 当前版本已实现但仍需人工验证的变更项
 # 待测试
 
 - 官方即梦素材上传失败时，画布错误节点应显示具体阶段；若 R2 直传被浏览器拦截，应提示当前页面来源及 bucket CORS/签名排查方向，不再只显示 `Failed to fetch`。
+- Artwork 发布后，Canvas 的文档入口应打开 `https://artworkers.online/image/manual/index.html`，构建产物不应包含 gptch.cloud 文档地址；未设置 `VITE_DOCS_URL` 的 gptch 构建仍保持原文档入口。
 - gptch.cloud 的 Docker 多架构发布后，渠道编辑器的「接口地址」应显示并固定为 `https://gptch.cloud`，输入框不可编辑；其他未传入 `VITE_FIXED_API_BASE_URL` 的本地/通用构建仍可自定义地址。
 - 顶部文档入口：点击右上角书本图标应在新标签页打开 `https://gptch.cloud/docs/image`，并正确加载 Image 使用文档。
 

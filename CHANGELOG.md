@@ -3,6 +3,7 @@
 ## Unreleased
 
 + [修复] 官方即梦素材上传失败时区分 Canvas 控制接口与 Cloudflare R2 直传错误，并提示检查真实页面来源的 bucket CORS 配置。
++ [调整] Canvas 文档入口支持由发布 profile 注入，Artwork 构建不再携带 gptch.cloud 文档地址。
 + [修复] gptch.cloud 的 Docker 多架构发布构建固定注入 Canvas API 地址，避免线上渠道编辑器回退显示 `https://api.openai.com`。
 + [调整] 顶部文档入口默认跳转至 gptch.cloud 的 Image 使用文档静态资源。
 + [新增] 模型渠道新增「官方满血即梦」协议，仅在点击生成时通过所配 Base URL 获取签名并将参考素材直传 Cloudflare R2，再以官方 JSON 协议创建、查询和下载视频任务。
