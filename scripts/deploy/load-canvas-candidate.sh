@@ -59,8 +59,8 @@ main() {
 
     script_dir="$(cd "$(dirname "$0")" && pwd -P)"
     manifest_script="$script_dir/canvas-artifact-manifest.sh"
-    [ -x "$manifest_script" ] || die 'canvas-artifact-manifest.sh is not installed beside the transaction'
-    "$manifest_script" assert --manifest "$manifest" >/dev/null
+    [ -f "$manifest_script" ] || die 'canvas-artifact-manifest.sh is not installed beside the transaction'
+    bash "$manifest_script" assert --manifest "$manifest" >/dev/null
     image_tag="$(field image_tag "$manifest")"
     image_id="$(field image_id "$manifest")"
     archive="$(field archive "$manifest")"
