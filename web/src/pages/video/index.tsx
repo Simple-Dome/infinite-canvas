@@ -16,6 +16,7 @@ import { JIMENG431_REFERENCE_LIMITS, isJimeng431VideoConfig } from "@/lib/jimeng
 import { isJimengOfficialVideoConfig, jimengOfficialModelResolution, normalizeJimengOfficialRatio } from "@/lib/jimeng-official-video";
 import { VIDEO_REFERENCE_IMAGE_MAX_EDGE } from "@/lib/video-reference-preprocess";
 import { deleteStoredMedia, resolveMediaUrl, uploadMediaFile } from "@/services/file-storage";
+import { resolveDownloadBlob } from "@/services/file-download";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { createVideoGenerationTask, downloadVideoGenerationTask, getVideoPollingPolicy, pollVideoGenerationTask, readVideoSeed, storeGeneratedVideo, type VideoGenerationTask } from "@/services/api/video";
 import { useAssetStore } from "@/stores/use-asset-store";
@@ -286,8 +287,14 @@ export default function VideoPage() {
         void generate();
     };
 
-    const downloadVideo = (video: GeneratedVideo) => {
-        saveAs(video.url, "video.mp4");
+    const downloadVideo = async (video: GeneratedVideo) => {
+        try {
+            const blob = await resolveDownloadBlob(video.url, video.storageKey);
+            saveAs(blob, "video.mp4");
+            message.success("已开始下载");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "视频下载失败");
+        }
     };
 
     const saveResultToAssets = (video: GeneratedVideo) => {

@@ -99,10 +99,10 @@ describe("official Jimeng video service", () => {
         expect(state).toEqual({ status: "failed", remoteStatus: "failed", progress: 35, error: "首尾帧组合不受支持" });
     });
 
-    test("downloads the upstream download_url without an Authorization header", async () => {
+    test("downloads official videos through the configured content endpoint", async () => {
         const get = mock(async (url: string, options?: { headers?: Record<string, string> }) => {
-            expect(url).toBe("https://upstream.example/video.mp4");
-            expect(options?.headers?.Authorization).toBeUndefined();
+            expect(url).toBe("http://localhost:3000/v1/videos/task-completed/content");
+            expect(options?.headers?.Authorization).toBe("Bearer local-token");
             return { data: new Blob(["video"], { type: "video/mp4" }) };
         });
         axios.get = get as typeof axios.get;

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
++ [修复] 画布、视频工作台和我的资产下载先读取本地或远端视频 Blob，跨域读取失败时不再把原始地址交给浏览器打开；官方即梦任务统一通过所配渠道的 `/content` 下载。
 + [修复] 官方即梦素材上传失败时区分 Canvas 控制接口与 Cloudflare R2 直传错误，并提示检查真实页面来源的 bucket CORS 配置。
 + [调整] Canvas 文档入口支持由发布 profile 注入，Artwork 构建不再携带 gptch.cloud 文档地址。
 + [修复] gptch.cloud 的 Docker 多架构发布构建固定注入 Canvas API 地址，避免线上渠道编辑器回退显示 `https://api.openai.com`。

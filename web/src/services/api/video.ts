@@ -249,8 +249,7 @@ export async function downloadVideoGenerationTask(config: AiConfig, task: VideoG
     if (task.provider === "jimeng933") return downloadJimeng933VideoTask(requestConfig, task, options);
     if (task.provider === "jimeng431") return downloadJimeng431VideoTask(requestConfig, task, completedState.resultUrl, options);
     if (task.provider === "jimengOfficial") {
-        if (!completedState.resultUrl) throw new Error("官方满血即梦任务已完成，但没有返回 download_url");
-        return videoResultFromUrl(completedState.resultUrl, options);
+        return downloadJimengOfficialVideoTask(requestConfig, task, options);
     }
     if (completedState.resultUrl) return videoResultFromUrl(completedState.resultUrl, options);
     if (task.provider === "seedance") throw new Error("Seedance 任务成功但没有返回视频 URL");
@@ -260,6 +259,17 @@ export async function downloadVideoGenerationTask(config: AiConfig, task: VideoG
         return { blob: content.data };
     } catch (error) {
         throw new Error(readAxiosError(error, "视频下载失败"));
+    }
+}
+
+async function downloadJimengOfficialVideoTask(config: AiConfig, task: VideoGenerationTask, options?: Pick<VideoRequestOptions, "signal">): Promise<VideoGenerationResult> {
+    try {
+        const url = aiApiUrl(config, `/videos/${encodeURIComponent(task.id)}/content`);
+        const response = await axios.get<Blob>(url, { headers: aiHeaders(config), responseType: "blob", signal: options?.signal });
+        await assertVideoBlob(response.data);
+        return { blob: response.data };
+    } catch (error) {
+        throw new Error(await readJimengOfficialAxiosError(error, "官方满血即梦视频下载失败"));
     }
 }
 

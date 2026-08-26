@@ -10,6 +10,7 @@ import { continueVideoGenerationTask, downloadVideoGenerationTask, pollVideoGene
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadImage } from "@/services/image-storage";
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
+import { readStoredDownloadBlob, resolveDownloadBlob } from "@/services/file-download";
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { CANVAS_IMAGE_QUALITY, resolveCanvasImageRequestSize } from "@/lib/image-size-presets";
@@ -1708,10 +1709,40 @@ function InfiniteCanvasPage() {
         setConnections((prev) => prev.map((connection) => (connection.id === connectionId ? { ...connection, targetRole: role } : connection)));
     }, []);
 
-    const downloadNodeImage = useCallback((node: CanvasNodeData) => {
-        if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) || !node.metadata?.content) return;
-        saveAs(node.metadata.content, `canvas-${node.type}-${node.id}.${node.type === CanvasNodeType.Video ? "mp4" : node.type === CanvasNodeType.Audio ? audioExtension(node.metadata.mimeType) : imageExtension(node.metadata.content)}`);
-    }, []);
+    const downloadNodeImage = useCallback(
+        async (node: CanvasNodeData) => {
+            if (node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) return;
+            const content = node.metadata?.content;
+            if (!content && !node.metadata?.remoteVideoTask) return;
+            const fileName = `canvas-${node.type}-${node.id}.${node.type === CanvasNodeType.Video ? "mp4" : node.type === CanvasNodeType.Audio ? audioExtension(node.metadata?.mimeType) : imageExtension(content || "")}`;
+            try {
+                let blob = await readStoredDownloadBlob(node.metadata?.storageKey);
+                const remoteTask = node.type === CanvasNodeType.Video ? node.metadata?.remoteVideoTask : undefined;
+                if (!blob && remoteTask) {
+                    if (!isAiConfigReady(effectiveConfig, remoteTask.model)) {
+                        openConfigDialog(true);
+                        return;
+                    }
+                    const task = toVideoGenerationTask(remoteTask);
+                    const state = await pollVideoGenerationTask(effectiveConfig, task);
+                    if (state.status !== "completed") {
+                        if (state.status === "failed") message.error(state.error);
+                        else message.info(typeof state.progress === "number" ? `远端状态：${state.remoteStatus}，进度 ${Math.round(state.progress)}%` : `远端状态：${state.remoteStatus}`);
+                        return;
+                    }
+                    const result = await downloadVideoGenerationTask(effectiveConfig, task, state);
+                    if (result.blob) blob = result.blob;
+                    else blob = await resolveDownloadBlob(result.url, undefined);
+                }
+                if (!blob) blob = await resolveDownloadBlob(content, undefined);
+                saveAs(blob, fileName);
+                message.success("已开始下载");
+            } catch (error) {
+                message.error(error instanceof Error ? error.message : "视频下载失败");
+            }
+        },
+        [effectiveConfig, isAiConfigReady, message, openConfigDialog],
+    );
 
     const runRemoteVideoAction = useCallback(async (nodeId: string, action: () => Promise<void>) => {
         if (remoteVideoActionNodeIdsRef.current.has(nodeId)) return;
