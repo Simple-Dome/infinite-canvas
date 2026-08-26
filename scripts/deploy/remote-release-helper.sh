@@ -18,7 +18,8 @@ Usage:
     --remote <user@host> --remote-dir <absolute-path> --archive <path> \
     [--chunk-bytes <bytes>]
   scripts/deploy/remote-release-helper.sh run-transaction \
-    --remote <user@host> --script <path> --remote-script <absolute-path>
+    --remote <user@host> --script <path> --remote-script <absolute-path> \
+    [--arg <value> ...]
 
 The helper uses one data-only SSH stream per chunk or script. All control
 commands use ssh -n, so a control command can never consume the next payload.
@@ -170,7 +171,11 @@ run_transaction() {
     local remote="$1"
     local script="$2"
     local remote_script="$3"
-    local script_size script_sha partial
+    shift 3
+    local script_size script_sha partial arg quoted_args=""
+    for arg in "$@"; do
+        quoted_args="$quoted_args $(shell_quote "$arg")"
+    done
 
     validate_remote_path "$remote_script"
     validate_archive_path "$script"
@@ -181,12 +186,13 @@ run_transaction() {
     remote_exec "$remote" "set -eu; script=$(shell_quote "$remote_script"); partial=$(shell_quote "$partial"); if [ -e \"\$script\" ] || [ -e \"\$partial\" ]; then printf 'transaction-script-exists\\n' >&2; exit 75; fi; mkdir -p \"\$(dirname \"\$script\")\""
     base64_encode "$script" | remote_data "$remote" "umask 077; base64 --decode > $(shell_quote "$partial")"
     remote_exec "$remote" "set -eu; script=$(shell_quote "$remote_script"); partial=$(shell_quote "$partial"); size=\$(wc -c < \"\$partial\" | tr -d '[:space:]'); sha=\$(sha256sum \"\$partial\" | awk '{print \$1}'); [ \"\$size\" = $(shell_quote "$script_size") ] && [ \"\$sha\" = $(shell_quote "$script_sha") ] || exit 75; mv \"\$partial\" \"\$script\""
-    remote_exec "$remote" "bash $(shell_quote "$remote_script")"
+    remote_exec "$remote" "bash $(shell_quote "$remote_script")$quoted_args"
     printf 'remote_script=%s\nscript_sha256=%s\nstatus=executed\n' "$remote_script" "$script_sha"
 }
 
 main() {
     local command="${1:-}" remote="" remote_dir="" archive="" script="" remote_script="" chunk_bytes="$DEFAULT_CHUNK_BYTES"
+    local -a transaction_args=()
     [ -n "$command" ] || { usage; exit 1; }
     shift
     while [ "$#" -gt 0 ]; do
@@ -197,6 +203,7 @@ main() {
             --script) require_value "$1" "${2:-}"; script="$2"; shift 2 ;;
             --remote-script) require_value "$1" "${2:-}"; remote_script="$2"; shift 2 ;;
             --chunk-bytes) require_value "$1" "${2:-}"; chunk_bytes="$2"; shift 2 ;;
+            --arg) require_value "$1" "${2:-}"; transaction_args+=("$2"); shift 2 ;;
             -h|--help) usage; exit 0 ;;
             *) die "unknown argument: $1" ;;
         esac
@@ -209,7 +216,7 @@ main() {
             ;;
         run-transaction)
             [ -n "$remote" ] && [ -n "$script" ] && [ -n "$remote_script" ] || die "run-transaction requires --remote, --script, and --remote-script"
-            run_transaction "$remote" "$script" "$remote_script"
+            run_transaction "$remote" "$script" "$remote_script" "${transaction_args[@]}"
             ;;
         -h|--help) usage ;;
         *) die "unknown command: $command" ;;
